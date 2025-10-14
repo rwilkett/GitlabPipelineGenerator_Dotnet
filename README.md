@@ -1,0 +1,2 @@
+# GitlabPipelineGenerator_Dotnet
+Dotnet version of GitlabPipelineGenerator
