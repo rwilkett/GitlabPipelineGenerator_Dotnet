@@ -22,8 +22,8 @@ public class GitLabApiErrorHandlerTests
     {
         _settings = new GitLabApiSettings
         {
-            InstanceUrl = "https://gitlab.example.com",
-            TimeoutSeconds = 30,
+            DefaultInstanceUrl = "https://gitlab.example.com",
+            RequestTimeout = TimeSpan.FromSeconds(30),
             MaxRetryAttempts = 3
         };
         _errorHandler = new GitLabApiErrorHandler(_settings);
@@ -371,7 +371,7 @@ public class GitLabApiErrorHandlerTests
     public void TranslateGitLabError_WithInvalidTokenErrorCode_ShouldReturnTokenMessage()
     {
         // Arrange
-        var exception = new GitLabApiException("Invalid token", errorCode: "invalid_token");
+        var exception = new GitLabApiException("Invalid token", 401, "invalid_token");
 
         // Act
         var message = _errorHandler.TranslateGitLabError(exception);
@@ -385,7 +385,7 @@ public class GitLabApiErrorHandlerTests
     public void TranslateGitLabError_WithInsufficientScopeErrorCode_ShouldReturnScopeMessage()
     {
         // Arrange
-        var exception = new GitLabApiException("Insufficient scope", errorCode: "insufficient_scope");
+        var exception = new GitLabApiException("Insufficient scope", 403, "insufficient_scope");
 
         // Act
         var message = _errorHandler.TranslateGitLabError(exception);
@@ -399,7 +399,7 @@ public class GitLabApiErrorHandlerTests
     public void TranslateGitLabError_WithProjectNotFoundErrorCode_ShouldReturnProjectMessage()
     {
         // Arrange
-        var exception = new GitLabApiException("Project not found", errorCode: "project_not_found");
+        var exception = new GitLabApiException("Project not found", 404, "project_not_found");
 
         // Act
         var message = _errorHandler.TranslateGitLabError(exception);
@@ -413,7 +413,7 @@ public class GitLabApiErrorHandlerTests
     public void TranslateGitLabError_WithBranchNotFoundErrorCode_ShouldReturnBranchMessage()
     {
         // Arrange
-        var exception = new GitLabApiException("Branch not found", errorCode: "branch_not_found");
+        var exception = new GitLabApiException("Branch not found", 404, "branch_not_found");
 
         // Act
         var message = _errorHandler.TranslateGitLabError(exception);

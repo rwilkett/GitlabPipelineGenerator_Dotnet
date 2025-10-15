@@ -20,7 +20,9 @@ public class GitLabAuthServiceTests
     public GitLabAuthServiceTests()
     {
         _mockLogger = new Mock<ILogger<GitLabAuthenticationService>>();
-        _authService = new GitLabAuthenticationService(_mockLogger.Object);
+        var mockErrorHandler = new Mock<IGitLabApiErrorHandler>();
+        var mockCredentialStorage = new Mock<ICredentialStorageService>();
+        _authService = new GitLabAuthenticationService(_mockLogger.Object, mockErrorHandler.Object, mockCredentialStorage.Object);
     }
 
     #region AuthenticateAsync Tests

@@ -11,7 +11,6 @@ using GitlabPipelineGenerator.Core.Exceptions;
 using GitlabPipelineGenerator.Core.Models.GitLab;
 using GitlabPipelineGenerator.Core.Models;
 using Microsoft.Extensions.Options;
-using GitlabPipelineGenerator.CLI.Services;
 
 namespace GitlabPipelineGenerator.CLI;
 
@@ -814,7 +813,7 @@ public class Program
         
         if (result.ExistingCI != null)
         {
-            Console.WriteLine($"   Existing CI: {result.ExistingCI.Type} detected");
+            Console.WriteLine($"   Existing CI: {result.ExistingCI.SystemType} detected");
         }
         
         if (verbose)
@@ -865,7 +864,7 @@ public class Program
         var enhancedOptions = new AnalysisBasedPipelineOptions
         {
             AnalysisResult = analysisResult,
-            PreferDetectedSettings = cliOptions.PreferDetected
+            UseAnalysisDefaults = cliOptions.PreferDetected
         };
 
         // Copy base options
@@ -879,15 +878,11 @@ public class Program
         enhancedOptions.IncludeCodeQuality = baseOptions.IncludeCodeQuality;
         enhancedOptions.IncludeSecurity = baseOptions.IncludeSecurity;
         enhancedOptions.IncludePerformance = baseOptions.IncludePerformance;
-        enhancedOptions.Variables = baseOptions.Variables;
-        enhancedOptions.Environments = baseOptions.Environments;
-        enhancedOptions.CachePaths = baseOptions.CachePaths;
-        enhancedOptions.CacheKey = baseOptions.CacheKey;
-        enhancedOptions.ArtifactPaths = baseOptions.ArtifactPaths;
-        enhancedOptions.ArtifactExpireIn = baseOptions.ArtifactExpireIn;
-        enhancedOptions.EnableParallelExecution = baseOptions.EnableParallelExecution;
-        enhancedOptions.EnableCaching = baseOptions.EnableCaching;
-        enhancedOptions.EnableNotifications = baseOptions.EnableNotifications;
+        enhancedOptions.CustomVariables = baseOptions.CustomVariables;
+        enhancedOptions.DeploymentEnvironments = baseOptions.DeploymentEnvironments;
+        enhancedOptions.Cache = baseOptions.Cache;
+        enhancedOptions.Artifacts = baseOptions.Artifacts;
+        enhancedOptions.Notifications = baseOptions.Notifications;
 
         return enhancedOptions;
     }
@@ -921,17 +916,17 @@ public class Program
         }
         
         // Compare cache paths
-        if (cliOptions.CachePaths.Any() && analysisResult.Dependencies.CacheRecommendation.Paths.Any())
+        if (cliOptions.Cache?.Paths?.Any() == true && analysisResult.Dependencies.CacheRecommendation.CachePaths.Any())
         {
-            var cliPaths = string.Join(", ", cliOptions.CachePaths);
-            var detectedPaths = string.Join(", ", analysisResult.Dependencies.CacheRecommendation.Paths);
+            var cliPaths = string.Join(", ", cliOptions.Cache.Paths);
+            var detectedPaths = string.Join(", ", analysisResult.Dependencies.CacheRecommendation.CachePaths);
             if (!cliPaths.Equals(detectedPaths))
             {
                 Console.WriteLine($"   Cache Paths: CLI='{cliPaths}' vs Detected='{detectedPaths}'");
             }
         }
         
-        Console.WriteLine($"   Resolution: {(enhancedOptions.PreferDetectedSettings ? "Preferring detected settings" : "Preferring CLI settings")}");
+        Console.WriteLine($"   Resolution: {(enhancedOptions.UseAnalysisDefaults ? "Preferring detected settings" : "Preferring CLI settings")}");
         Console.WriteLine();
     }
 }

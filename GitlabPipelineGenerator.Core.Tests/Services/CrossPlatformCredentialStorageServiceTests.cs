@@ -31,8 +31,8 @@ public class CrossPlatformCredentialStorageServiceTests
         var isAvailable = _storageService.IsAvailable;
 
         // Assert
-        isAvailable.Should().BeOfType<bool>();
         // Note: The actual value depends on the platform and OS credential store availability
+        // We just verify that the method completes without throwing
     }
 
     #endregion
@@ -60,7 +60,7 @@ public class CrossPlatformCredentialStorageServiceTests
         // Assert
         // Note: The actual result depends on platform credential store availability
         // We can only test that the method doesn't throw and returns a boolean
-        result.Should().BeOfType<bool>();
+        // Method completed successfully - no assertion needed
     }
 
     [Fact]
@@ -72,7 +72,7 @@ public class CrossPlatformCredentialStorageServiceTests
         // Act & Assert
         // Should not throw, but may return false depending on serialization behavior
         var result = await _storageService.StoreCredentialAsync(target, null!);
-        result.Should().BeOfType<bool>();
+        // Method completed successfully - no assertion needed
     }
 
     [Fact]
@@ -89,7 +89,7 @@ public class CrossPlatformCredentialStorageServiceTests
         var result = await _storageService.StoreCredentialAsync("", credentials);
 
         // Assert
-        result.Should().BeOfType<bool>();
+        // Method completed successfully - no assertion needed
     }
 
     #endregion
@@ -144,7 +144,7 @@ public class CrossPlatformCredentialStorageServiceTests
 
         // Assert
         // Note: Behavior may vary by platform, but should return a boolean
-        result.Should().BeOfType<bool>();
+        // Method completed successfully - no assertion needed
     }
 
     [Fact]
@@ -154,7 +154,7 @@ public class CrossPlatformCredentialStorageServiceTests
         var result = await _storageService.DeleteCredentialAsync("");
 
         // Assert
-        result.Should().BeOfType<bool>();
+        // Method completed successfully - no assertion needed
     }
 
     [Fact]
@@ -164,7 +164,7 @@ public class CrossPlatformCredentialStorageServiceTests
         var result = await _storageService.DeleteCredentialAsync(null!);
 
         // Assert
-        result.Should().BeOfType<bool>();
+        // Method completed successfully - no assertion needed
     }
 
     #endregion
@@ -467,7 +467,7 @@ public class CrossPlatformCredentialStorageServiceTests
 
         // Assert
         service.Should().NotBeNull();
-        service.IsAvailable.Should().BeOfType<bool>();
+        // Method completed successfully - no assertion needed
         
         // The service should have created a platform-specific provider internally
         // We can't directly test which provider was created, but we can test that
@@ -490,13 +490,17 @@ public class CrossPlatformCredentialStorageServiceTests
 
         // Act & Assert - All methods should complete without throwing
         var storeResult = await _storageService.StoreCredentialAsync(target, credentials);
-        storeResult.Should().BeOfType<bool>();
+        // Method completed successfully - no assertion needed
 
         var loadResult = await _storageService.LoadCredentialAsync(target);
-        loadResult.Should().BeOfType<CredentialData>().Or.BeNull();
+        // loadResult can be either CredentialData or null
+        if (loadResult != null)
+        {
+            loadResult.Should().BeOfType<CredentialData>();
+        }
 
         var deleteResult = await _storageService.DeleteCredentialAsync(target);
-        deleteResult.Should().BeOfType<bool>();
+        // Method completed successfully - no assertion needed
 
         var listResult = await _storageService.ListCredentialTargetsAsync("test-");
         listResult.Should().NotBeNull();

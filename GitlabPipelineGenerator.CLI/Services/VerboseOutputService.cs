@@ -120,7 +120,7 @@ public class VerboseOutputService
             WriteLine($"Access Level: {permissions.AccessLevel}");
             WriteLine($"Can Read Repository: {permissions.CanReadRepository}");
             WriteLine($"Can Write Repository: {permissions.CanWriteRepository}");
-            WriteLine($"Can Admin Project: {permissions.CanAdminProject}");
+            WriteLine($"Can Manage CI/CD: {permissions.CanManageCiCd}");
         }
         DecreaseIndent();
         Console.WriteLine();
@@ -203,10 +203,10 @@ public class VerboseOutputService
             
             if (result.Dependencies.CacheRecommendation != null)
             {
-                WriteLine($"Cache Strategy: {result.Dependencies.CacheRecommendation.Strategy}");
-                if (result.Dependencies.CacheRecommendation.Paths.Any())
+                WriteLine($"Cache Policy: {result.Dependencies.CacheRecommendation.Configuration.Policy}");
+                if (result.Dependencies.CacheRecommendation.CachePaths.Any())
                 {
-                    WriteLine($"Cache Paths: {string.Join(", ", result.Dependencies.CacheRecommendation.Paths)}");
+                    WriteLine($"Cache Paths: {string.Join(", ", result.Dependencies.CacheRecommendation.CachePaths)}");
                 }
             }
         }
@@ -215,7 +215,7 @@ public class VerboseOutputService
         if (result.ExistingCI != null)
         {
             WriteLine($"Existing CI System: {result.ExistingCI.SystemType}");
-            WriteLine($"CI Configuration File: {result.ExistingCI.ConfigurationFile}");
+            WriteLine($"CI Configuration Files: {string.Join(", ", result.ExistingCI.ConfigurationFiles)}");
             if (result.ExistingCI.DetectedStages.Any())
             {
                 WriteLine($"Existing Stages: {string.Join(", ", result.ExistingCI.DetectedStages)}");
@@ -225,14 +225,14 @@ public class VerboseOutputService
         // Deployment Information
         if (result.Deployment != null)
         {
-            WriteLine($"Deployment Strategy: {result.Deployment.Strategy}");
-            if (result.Deployment.Targets.Any())
+            WriteLine($"Has Deployment Config: {result.Deployment.HasDeploymentConfig}");
+            if (result.Deployment.Configuration.Targets.Any())
             {
-                WriteLine($"Deployment Targets: {string.Join(", ", result.Deployment.Targets)}");
+                WriteLine($"Deployment Targets: {string.Join(", ", result.Deployment.Configuration.Targets.Select(t => t.Name))}");
             }
-            if (result.Deployment.Environments.Any())
+            if (result.Deployment.DetectedEnvironments.Any())
             {
-                WriteLine($"Environments: {string.Join(", ", result.Deployment.Environments.Select(e => e.Name))}");
+                WriteLine($"Environments: {string.Join(", ", result.Deployment.DetectedEnvironments)}");
             }
         }
 
@@ -244,9 +244,9 @@ public class VerboseOutputService
             foreach (var warning in result.Warnings)
             {
                 WriteLine($"⚠️  {warning.Message}");
-                if (!string.IsNullOrEmpty(warning.Suggestion))
+                if (!string.IsNullOrEmpty(warning.Resolution))
                 {
-                    WriteLine($"   💡 {warning.Suggestion}");
+                    WriteLine($"   💡 {warning.Resolution}");
                 }
             }
             DecreaseIndent();
@@ -275,21 +275,21 @@ public class VerboseOutputService
         // Job details by stage
         foreach (var stage in pipeline.Stages)
         {
-            var stageJobs = pipeline.Jobs.Where(j => j.Stage == stage).ToList();
+            var stageJobs = pipeline.Jobs.Where(kvp => kvp.Value.Stage == stage).ToList();
             if (stageJobs.Any())
             {
                 WriteLine($"Stage '{stage}': {stageJobs.Count} jobs");
                 IncreaseIndent();
-                foreach (var job in stageJobs)
+                foreach (var jobKvp in stageJobs)
                 {
-                    WriteLine($"- {job.Name}");
-                    if (job.Script.Any())
+                    WriteLine($"- {jobKvp.Key}");
+                    if (jobKvp.Value.Script.Any())
                     {
-                        WriteLine($"  Commands: {job.Script.Count}");
+                        WriteLine($"  Commands: {jobKvp.Value.Script.Count}");
                     }
-                    if (job.Artifacts?.Paths?.Any() == true)
+                    if (jobKvp.Value.Artifacts?.Paths?.Any() == true)
                     {
-                        WriteLine($"  Artifacts: {string.Join(", ", job.Artifacts.Paths)}");
+                        WriteLine($"  Artifacts: {string.Join(", ", jobKvp.Value.Artifacts.Paths)}");
                     }
                 }
                 DecreaseIndent();

@@ -21,7 +21,8 @@ public class GitLabProjectServiceTests
     {
         _mockAuthService = new Mock<IGitLabAuthenticationService>();
         _mockLogger = new Mock<ILogger<GitLabProjectService>>();
-        _projectService = new GitLabProjectService(_mockAuthService.Object, _mockLogger.Object);
+        var mockErrorHandler = new Mock<IGitLabApiErrorHandler>();
+        _projectService = new GitLabProjectService(_mockAuthService.Object, _mockLogger.Object, mockErrorHandler.Object);
     }
 
     #region GetProjectAsync Validation Tests

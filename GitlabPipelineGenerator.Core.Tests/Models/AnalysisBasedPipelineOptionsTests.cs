@@ -464,7 +464,6 @@ public class AnalysisBasedPipelineOptionsTests
             Dependencies = new DependencyInfo
             {
                 PackageManager = "nuget",
-                TotalDependencies = 10,
                 Dependencies = new List<PackageDependency>(),
                 DevDependencies = new List<PackageDependency>(),
                 Runtime = new RuntimeInfo { Name = ".NET", Version = "8.0" },
@@ -511,7 +510,6 @@ public class AnalysisBasedPipelineOptionsTests
             Dependencies = new DependencyInfo
             {
                 PackageManager = "npm",
-                TotalDependencies = 25,
                 Dependencies = new List<PackageDependency>(),
                 DevDependencies = new List<PackageDependency>(),
                 Runtime = new RuntimeInfo { Name = "Node.js", Version = "18.0" },
@@ -558,7 +556,6 @@ public class AnalysisBasedPipelineOptionsTests
             Dependencies = new DependencyInfo
             {
                 PackageManager = "pip",
-                TotalDependencies = 15,
                 Dependencies = new List<PackageDependency>(),
                 DevDependencies = new List<PackageDependency>(),
                 Runtime = new RuntimeInfo { Name = "Python", Version = "3.11" },
@@ -605,7 +602,6 @@ public class AnalysisBasedPipelineOptionsTests
             Dependencies = new DependencyInfo
             {
                 PackageManager = "maven",
-                TotalDependencies = 20,
                 Dependencies = new List<PackageDependency>(),
                 DevDependencies = new List<PackageDependency>(),
                 Runtime = new RuntimeInfo { Name = "Java", Version = "17" },
@@ -660,8 +656,11 @@ public class AnalysisBasedPipelineOptionsTests
         result.Dependencies.CacheRecommendation = new CacheRecommendation
         {
             IsRecommended = true,
-            CacheKey = "$CI_COMMIT_REF_SLUG-dotnet",
-            CachePaths = new List<string> { "~/.nuget/packages/" }
+            Configuration = new CacheConfiguration
+            {
+                CacheKey = "$CI_COMMIT_REF_SLUG-dotnet",
+                CachePaths = new List<string> { "~/.nuget/packages/" }
+            }
         };
         return result;
     }
@@ -672,7 +671,7 @@ public class AnalysisBasedPipelineOptionsTests
         result.Docker = new DockerConfiguration
         {
             BaseImage = "mcr.microsoft.com/dotnet/sdk:8.0",
-            HasDockerfile = true,
+            HasDockerConfig = true,
             BuildArgs = new Dictionary<string, string>
             {
                 ["BUILD_CONFIGURATION"] = "Release"

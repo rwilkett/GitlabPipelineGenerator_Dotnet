@@ -387,15 +387,17 @@ public class EnhancedPipelineGenerationIntegrationTests
             Dependencies = new DependencyInfo
             {
                 PackageManager = "nuget",
-                TotalDependencies = 25,
                 Dependencies = new List<PackageDependency>(),
                 DevDependencies = new List<PackageDependency>(),
                 Runtime = new RuntimeInfo { Name = ".NET", Version = "8.0" },
                 CacheRecommendation = new CacheRecommendation 
                 { 
                     IsRecommended = true,
-                    CacheKey = "$CI_COMMIT_REF_SLUG-dotnet",
-                    CachePaths = new List<string> { "~/.nuget/packages/" }
+                    Configuration = new CacheConfiguration
+                    {
+                        CacheKey = "$CI_COMMIT_REF_SLUG-dotnet",
+                        CachePaths = new List<string> { "~/.nuget/packages/" }
+                    }
                 },
                 SecurityScanRecommendation = new SecurityScanConfiguration 
                 { 
@@ -411,7 +413,7 @@ public class EnhancedPipelineGenerationIntegrationTests
             Docker = new DockerConfiguration
             {
                 BaseImage = "mcr.microsoft.com/dotnet/sdk:8.0",
-                HasDockerfile = true,
+                HasDockerConfig = true,
                 BuildArgs = new Dictionary<string, string>
                 {
                     ["BUILD_CONFIGURATION"] = "Release"
@@ -467,15 +469,17 @@ public class EnhancedPipelineGenerationIntegrationTests
             Dependencies = new DependencyInfo
             {
                 PackageManager = "npm",
-                TotalDependencies = 50,
                 Dependencies = new List<PackageDependency>(),
                 DevDependencies = new List<PackageDependency>(),
                 Runtime = new RuntimeInfo { Name = "Node.js", Version = "18.0" },
                 CacheRecommendation = new CacheRecommendation 
                 { 
                     IsRecommended = true,
-                    CacheKey = "$CI_COMMIT_REF_SLUG-npm",
-                    CachePaths = new List<string> { "node_modules/", ".npm/" }
+                    Configuration = new CacheConfiguration
+                    {
+                        CacheKey = "$CI_COMMIT_REF_SLUG-npm",
+                        CachePaths = new List<string> { "node_modules/", ".npm/" }
+                    }
                 },
                 SecurityScanRecommendation = new SecurityScanConfiguration { IsRecommended = false },
                 HasSecuritySensitiveDependencies = false
@@ -499,7 +503,9 @@ public class EnhancedPipelineGenerationIntegrationTests
         var analysis = CreateComprehensiveDotNetAnalysis();
         
         // Simulate a large project
-        analysis.Dependencies.TotalDependencies = 150;
+        // Add more dependencies to increase TotalDependencies count
+        analysis.Dependencies.Dependencies.AddRange(Enumerable.Range(1, 75).Select(i => new PackageDependency { Name = $"Package{i}" }));
+        analysis.Dependencies.DevDependencies.AddRange(Enumerable.Range(1, 75).Select(i => new PackageDependency { Name = $"DevPackage{i}" }));
         analysis.BuildConfig.ArtifactPaths.AddRange(Enumerable.Range(1, 20).Select(i => $"module{i}/bin/"));
         analysis.Framework.DetectedFeatures.AddRange(new[] { "microservices", "messaging", "caching", "monitoring" });
         analysis.Deployment.DetectedEnvironments.AddRange(new[] { "dev", "test", "staging", "production" });
@@ -514,7 +520,9 @@ public class EnhancedPipelineGenerationIntegrationTests
         // Add secondary framework detection
         analysis.Framework.DetectedFeatures.Add("frontend");
         analysis.BuildConfig.BuildCommands.Add("npm run build:frontend");
-        analysis.Dependencies.TotalDependencies = 75; // More dependencies due to multiple frameworks
+        // More dependencies due to multiple frameworks
+        analysis.Dependencies.Dependencies.AddRange(Enumerable.Range(1, 40).Select(i => new PackageDependency { Name = $"FrontendPackage{i}" }));
+        analysis.Dependencies.DevDependencies.AddRange(Enumerable.Range(1, 35).Select(i => new PackageDependency { Name = $"FrontendDevPackage{i}" }));
         
         // Add Node.js specific variables
         analysis.Framework.Configuration["NODE_VERSION"] = "18.0";

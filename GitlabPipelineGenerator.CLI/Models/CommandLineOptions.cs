@@ -298,15 +298,17 @@ public class CommandLineOptions
         }
 
         // Validate GitLab URL format
-        if (!string.IsNullOrEmpty(GitLabUrl) && !Uri.TryCreate(GitLabUrl, UriKind.Absolute, out var gitlabUri))
+        if (!string.IsNullOrEmpty(GitLabUrl))
         {
-            errors.Add($"Invalid GitLab URL format: {GitLabUrl}");
-        }
-        else if (!string.IsNullOrEmpty(GitLabUrl) && gitlabUri != null && 
-                 !gitlabUri.Scheme.Equals("http", StringComparison.OrdinalIgnoreCase) && 
-                 !gitlabUri.Scheme.Equals("https", StringComparison.OrdinalIgnoreCase))
-        {
-            errors.Add($"GitLab URL must use HTTP or HTTPS protocol: {GitLabUrl}");
+            if (!Uri.TryCreate(GitLabUrl, UriKind.Absolute, out var gitlabUri))
+            {
+                errors.Add($"Invalid GitLab URL format: {GitLabUrl}");
+            }
+            else if (!gitlabUri.Scheme.Equals("http", StringComparison.OrdinalIgnoreCase) && 
+                     !gitlabUri.Scheme.Equals("https", StringComparison.OrdinalIgnoreCase))
+            {
+                errors.Add($"GitLab URL must use HTTP or HTTPS protocol: {GitLabUrl}");
+            }
         }
 
         // Validate analysis depth

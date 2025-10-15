@@ -198,8 +198,8 @@ public class ResilientGitLabServiceTests
         });
 
         _mockErrorHandler
-            .Setup(x => x.ExecuteWithRetryAsync(It.IsAny<Func<Task>>(), It.IsAny<RetryPolicy>(), It.IsAny<CancellationToken>()))
-            .Returns<Func<Task>, RetryPolicy, CancellationToken>((op, policy, ct) => op());
+            .Setup(x => x.ExecuteWithRetryAsync<bool>(It.IsAny<Func<Task<bool>>>(), It.IsAny<RetryPolicy>(), It.IsAny<CancellationToken>()))
+            .Returns<Func<Task<bool>>, RetryPolicy, CancellationToken>(async (op, policy, ct) => await op());
 
         // Act
         await _resilientService.ExecuteAsync(operation);
@@ -216,7 +216,7 @@ public class ResilientGitLabServiceTests
         var operation = new Func<CancellationToken, Task>(ct => throw exception);
 
         _mockErrorHandler
-            .Setup(x => x.ExecuteWithRetryAsync(It.IsAny<Func<Task>>(), It.IsAny<RetryPolicy>(), It.IsAny<CancellationToken>()))
+            .Setup(x => x.ExecuteWithRetryAsync<bool>(It.IsAny<Func<Task<bool>>>(), It.IsAny<RetryPolicy>(), It.IsAny<CancellationToken>()))
             .ThrowsAsync(exception);
 
         // Act & Assert

@@ -1,5 +1,6 @@
 using GitlabPipelineGenerator.Core.Exceptions;
 using System.Text;
+using System.Text.Json;
 
 namespace GitlabPipelineGenerator.CLI.Services;
 
@@ -85,10 +86,6 @@ public class UserFriendlyErrorService
 
         switch (error)
         {
-            case GitLabApiException gitlabError:
-                (friendlyMessage, suggestions) = HandleGitLabApiError(gitlabError);
-                break;
-
             case InsufficientPermissionsException permError:
                 friendlyMessage = "You don't have sufficient permissions to perform this operation";
                 suggestions.AddRange(new[]
@@ -98,6 +95,10 @@ public class UserFriendlyErrorService
                     "Contact the project owner to request additional permissions",
                     $"Required permissions: {permError.RequiredPermissions}"
                 });
+                break;
+
+            case GitLabApiException gitlabError:
+                (friendlyMessage, suggestions) = HandleGitLabApiError(gitlabError);
                 break;
 
             case UnauthorizedAccessException:

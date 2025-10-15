@@ -356,7 +356,7 @@ public class ProjectAnalysisServiceTests
 
         var environmentConfig = new EnvironmentConfiguration
         {
-            Environments = new List<EnvironmentInfo>
+            Environments = new List<GitlabPipelineGenerator.Core.Models.GitLab.Environment>
             {
                 new() { Name = "production", Type = EnvironmentType.Production }
             },
@@ -501,7 +501,7 @@ public class ProjectAnalysisServiceTests
             .Setup(x => x.DetectEnvironmentsAsync(It.IsAny<GitLabProject>()))
             .ReturnsAsync(new EnvironmentConfiguration
             {
-                Environments = new List<EnvironmentInfo>(),
+                Environments = new List<GitlabPipelineGenerator.Core.Models.GitLab.Environment>(),
                 Confidence = AnalysisConfidence.Medium
             });
     }

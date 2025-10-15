@@ -448,7 +448,7 @@ public class IntelligentPipelineGeneratorTests
         analysisResult.Docker = new DockerConfiguration
         {
             BaseImage = "mcr.microsoft.com/dotnet/sdk:8.0",
-            HasDockerfile = true,
+            HasDockerConfig = true,
             BuildArgs = new Dictionary<string, string>
             {
                 ["BUILD_CONFIGURATION"] = "Release"
@@ -502,8 +502,11 @@ public class IntelligentPipelineGeneratorTests
         analysisResult.Dependencies.CacheRecommendation = new CacheRecommendation
         {
             IsRecommended = true,
-            CacheKey = "$CI_COMMIT_REF_SLUG-dotnet",
-            CachePaths = new List<string> { "~/.nuget/packages/" }
+            Configuration = new CacheConfiguration
+            {
+                CacheKey = "$CI_COMMIT_REF_SLUG-dotnet",
+                CachePaths = new List<string> { "~/.nuget/packages/" }
+            }
         };
 
         var options = new PipelineOptions
@@ -1237,7 +1240,6 @@ public class IntelligentPipelineGeneratorTests
             Dependencies = new DependencyInfo
             {
                 PackageManager = "nuget",
-                TotalDependencies = 10,
                 Dependencies = new List<PackageDependency>(),
                 DevDependencies = new List<PackageDependency>(),
                 Runtime = new RuntimeInfo { Name = ".NET", Version = "8.0" },
@@ -1291,15 +1293,17 @@ public class IntelligentPipelineGeneratorTests
             Dependencies = new DependencyInfo
             {
                 PackageManager = "nuget",
-                TotalDependencies = 10,
                 Dependencies = new List<PackageDependency>(),
                 DevDependencies = new List<PackageDependency>(),
                 Runtime = new RuntimeInfo { Name = ".NET", Version = "8.0" },
                 CacheRecommendation = new CacheRecommendation 
                 { 
                     IsRecommended = true,
-                    CacheKey = "$CI_COMMIT_REF_SLUG-dotnet",
-                    CachePaths = new List<string> { "~/.nuget/packages/" }
+                    Configuration = new CacheConfiguration
+                    {
+                        CacheKey = "$CI_COMMIT_REF_SLUG-dotnet",
+                        CachePaths = new List<string> { "~/.nuget/packages/" }
+                    }
                 },
                 SecurityScanRecommendation = new SecurityScanConfiguration 
                 { 
@@ -1314,7 +1318,7 @@ public class IntelligentPipelineGeneratorTests
             Docker = new DockerConfiguration
             {
                 BaseImage = "mcr.microsoft.com/dotnet/sdk:8.0",
-                HasDockerfile = true,
+                HasDockerConfig = true,
                 BuildArgs = new Dictionary<string, string>
                 {
                     ["BUILD_CONFIGURATION"] = "Release"
