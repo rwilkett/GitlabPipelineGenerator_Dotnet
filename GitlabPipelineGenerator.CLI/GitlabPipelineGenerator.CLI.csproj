@@ -5,6 +5,45 @@
     <TargetFramework>net9.0</TargetFramework>
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
+    
+    <!-- NuGet Package Metadata -->
+    <PackageId>GitlabPipelineGenerator.CLI</PackageId>
+    <Version>1.0.0</Version>
+    <AssemblyVersion>1.0.0.0</AssemblyVersion>
+    <FileVersion>1.0.0.0</FileVersion>
+    <Title>GitLab Pipeline Generator CLI</Title>
+    <Description>A command-line tool for automatically generating GitLab CI/CD pipeline configurations based on project analysis. Analyzes your project structure, dependencies, and configuration to create optimized .gitlab-ci.yml files with intelligent defaults for build, test, and deployment stages.</Description>
+    <Summary>CLI tool for generating GitLab CI/CD pipelines with intelligent project analysis</Summary>
+    <Authors>GitLab Pipeline Generator Team</Authors>
+    <Company>GitLab Pipeline Generator</Company>
+    <Product>GitLab Pipeline Generator CLI</Product>
+    <Copyright>Copyright © 2024 GitLab Pipeline Generator Team</Copyright>
+    
+    <!-- Package Information -->
+    <PackageProjectUrl>https://github.com/your-org/gitlab-pipeline-generator</PackageProjectUrl>
+    <RepositoryUrl>https://github.com/your-org/gitlab-pipeline-generator</RepositoryUrl>
+    <RepositoryType>git</RepositoryType>
+    <PackageLicenseExpression>MIT</PackageLicenseExpression>
+    <PackageReadmeFile>README.md</PackageReadmeFile>
+    <PackageIcon Condition="Exists('../icon.png')">icon.png</PackageIcon>
+    <PackageTags>gitlab;ci;cd;pipeline;devops;automation;yaml;dotnet;cli;tool</PackageTags>
+    <PackageReleaseNotes>Initial release of GitLab Pipeline Generator CLI with support for .NET, Node.js, Python, Java, Go, and Docker projects.</PackageReleaseNotes>
+    
+    <!-- Tool Configuration -->
+    <PackAsTool>true</PackAsTool>
+    <ToolCommandName>gitlab-pipeline-gen</ToolCommandName>
+    
+    <!-- Build Configuration -->
+    <GeneratePackageOnBuild>false</GeneratePackageOnBuild>
+    <IncludeSymbols>true</IncludeSymbols>
+    <SymbolPackageFormat>snupkg</SymbolPackageFormat>
+    <PublishRepositoryUrl>true</PublishRepositoryUrl>
+    <EmbedUntrackedSources>true</EmbedUntrackedSources>
+    <DebugType>embedded</DebugType>
+    
+    <!-- Documentation -->
+    <GenerateDocumentationFile>true</GenerateDocumentationFile>
+    <NoWarn>$(NoWarn);1591</NoWarn>
   </PropertyGroup>
 
   <ItemGroup>
@@ -17,6 +56,9 @@
     <PackageReference Include="Microsoft.Extensions.Logging" Version="9.0.0" />
     <PackageReference Include="Microsoft.Extensions.Logging.Console" Version="9.0.0" />
     <PackageReference Include="Microsoft.Extensions.Logging.Configuration" Version="9.0.0" />
+    
+    <!-- Source Link Support for better debugging experience -->
+    <PackageReference Include="Microsoft.SourceLink.GitHub" Version="8.0.0" PrivateAssets="All" />
   </ItemGroup>
 
   <ItemGroup>
@@ -27,6 +69,14 @@
     <None Update="appsettings.json">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </None>
+  </ItemGroup>
+
+  <!-- Package Content Files -->
+  <ItemGroup>
+    <None Include="../README.md" Pack="true" PackagePath="/" Condition="Exists('../README.md')" />
+    <None Include="../icon.png" Pack="true" PackagePath="/" Condition="Exists('../icon.png')" />
+    <None Include="../LICENSE" Pack="true" PackagePath="/" Condition="Exists('../LICENSE')" />
+    <None Include="../CHANGELOG.md" Pack="true" PackagePath="/" Condition="Exists('../CHANGELOG.md')" />
   </ItemGroup>
 
 </Project>

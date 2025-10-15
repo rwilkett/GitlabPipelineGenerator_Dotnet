@@ -39,8 +39,8 @@ dotnet tool install -g GitlabPipelineGenerator.CLI
 git clone https://github.com/your-repo/GitlabPipelineGenerator_Dotnet.git
 cd GitlabPipelineGenerator_Dotnet
 dotnet build
-dotnet pack
-dotnet tool install -g --add-source ./nupkg GitlabPipelineGenerator.CLI
+dotnet pack GitlabPipelineGenerator.CLI --configuration Release --verbosity quiet
+dotnet tool install --global --add-source <path_to_nupkg_directory> GitlabPipelineGenerator.CLI
 ```
 
 ## 🎯 Quick Start
@@ -48,13 +48,13 @@ dotnet tool install -g --add-source ./nupkg GitlabPipelineGenerator.CLI
 ### Basic Pipeline Generation
 ```bash
 # Generate a .NET pipeline
-gitlab-pipeline-generator --type dotnet --dotnet-version 9.0
+gitlab-pipeline-gen --type dotnet --dotnet-version 9.0
 
 # Generate a Node.js pipeline
-gitlab-pipeline-generator --type nodejs --stages build,test,deploy
+gitlab-pipeline-gen --type nodejs --stages build,test,deploy
 
 # Generate with custom output
-gitlab-pipeline-generator --type python --output my-pipeline.yml
+gitlab-pipeline-gen --type python --output my-pipeline.yml
 ```
 
 ### GitLab API Integration
