@@ -1,4 +1,5 @@
 using CommandLine;
+using System;
 
 namespace GitlabPipelineGenerator.CLI.Models;
 
@@ -100,6 +101,58 @@ public class CommandLineOptions
 
     [Option("show-sample", Required = false, Default = false, HelpText = "Show sample pipeline output for the specified project type")]
     public bool ShowSample { get; set; } = false;
+
+    // GitLab API Integration Options
+    [Option("gitlab-token", Required = false, HelpText = "GitLab personal access token for API authentication")]
+    public string? GitLabToken { get; set; }
+
+    [Option("gitlab-url", Required = false, Default = "https://gitlab.com", HelpText = "GitLab instance URL (default: https://gitlab.com)")]
+    public string GitLabUrl { get; set; } = "https://gitlab.com";
+
+    [Option("gitlab-project", Required = false, HelpText = "GitLab project ID or path (e.g., 'group/project' or '12345')")]
+    public string? GitLabProject { get; set; }
+
+    [Option("gitlab-profile", Required = false, HelpText = "GitLab connection profile name to use")]
+    public string? GitLabProfile { get; set; }
+
+    // Project Analysis Options
+    [Option("analyze-project", Required = false, Default = false, HelpText = "Enable automatic project analysis using GitLab API")]
+    public bool AnalyzeProject { get; set; } = false;
+
+    [Option("analysis-depth", Required = false, Default = 2, HelpText = "Analysis depth level (1-3): 1=basic, 2=standard, 3=comprehensive")]
+    public int AnalysisDepth { get; set; } = 2;
+
+    [Option("skip-analysis", Required = false, HelpText = "Skip specific analysis types: files,dependencies,config,deployment", Separator = ',')]
+    public IEnumerable<string> SkipAnalysis { get; set; } = Enumerable.Empty<string>();
+
+    [Option("analysis-exclude", Required = false, HelpText = "File patterns to exclude from analysis (glob patterns)", Separator = ',')]
+    public IEnumerable<string> AnalysisExcludePatterns { get; set; } = Enumerable.Empty<string>();
+
+    [Option("show-analysis", Required = false, Default = false, HelpText = "Display analysis results before pipeline generation")]
+    public bool ShowAnalysis { get; set; } = false;
+
+    // Hybrid Mode Options
+    [Option("prefer-detected", Required = false, Default = false, HelpText = "Prefer detected settings over CLI options when conflicts occur")]
+    public bool PreferDetected { get; set; } = false;
+
+    [Option("merge-config", Required = false, Default = true, HelpText = "Merge detected and manual configurations (default behavior)")]
+    public bool MergeConfig { get; set; } = true;
+
+    [Option("show-conflicts", Required = false, Default = false, HelpText = "Show conflicts between detected and manual settings")]
+    public bool ShowConflicts { get; set; } = false;
+
+    // Project Discovery Options
+    [Option("list-projects", Required = false, Default = false, HelpText = "List accessible GitLab projects")]
+    public bool ListProjects { get; set; } = false;
+
+    [Option("search-projects", Required = false, HelpText = "Search GitLab projects by name or description")]
+    public string? SearchProjects { get; set; }
+
+    [Option("project-filter", Required = false, HelpText = "Filter projects: owned,member,public,private,internal", Separator = ',')]
+    public IEnumerable<string> ProjectFilter { get; set; } = Enumerable.Empty<string>();
+
+    [Option("max-projects", Required = false, Default = 50, HelpText = "Maximum number of projects to list or search")]
+    public int MaxProjects { get; set; } = 50;
 
     /// <summary>
     /// Validates the command-line options and returns validation errors
@@ -244,6 +297,73 @@ public class CommandLineOptions
             }
         }
 
+        // Validate GitLab URL format
+        if (!string.IsNullOrEmpty(GitLabUrl) && !Uri.TryCreate(GitLabUrl, UriKind.Absolute, out var gitlabUri))
+        {
+            errors.Add($"Invalid GitLab URL format: {GitLabUrl}");
+        }
+        else if (!string.IsNullOrEmpty(GitLabUrl) && gitlabUri != null && 
+                 !gitlabUri.Scheme.Equals("http", StringComparison.OrdinalIgnoreCase) && 
+                 !gitlabUri.Scheme.Equals("https", StringComparison.OrdinalIgnoreCase))
+        {
+            errors.Add($"GitLab URL must use HTTP or HTTPS protocol: {GitLabUrl}");
+        }
+
+        // Validate analysis depth
+        if (AnalysisDepth < 1 || AnalysisDepth > 3)
+        {
+            errors.Add("Analysis depth must be between 1 and 3");
+        }
+
+        // Validate skip analysis options
+        if (SkipAnalysis != null)
+        {
+            var validSkipTypes = new[] { "files", "dependencies", "config", "deployment" };
+            foreach (var skipType in SkipAnalysis)
+            {
+                if (!validSkipTypes.Contains(skipType.ToLowerInvariant()))
+                {
+                    errors.Add($"Invalid skip analysis type '{skipType}'. Valid types are: {string.Join(", ", validSkipTypes)}");
+                }
+            }
+        }
+
+        // Validate project filter options
+        if (ProjectFilter != null)
+        {
+            var validFilters = new[] { "owned", "member", "public", "private", "internal" };
+            foreach (var filter in ProjectFilter)
+            {
+                if (!validFilters.Contains(filter.ToLowerInvariant()))
+                {
+                    errors.Add($"Invalid project filter '{filter}'. Valid filters are: {string.Join(", ", validFilters)}");
+                }
+            }
+        }
+
+        // Validate max projects
+        if (MaxProjects < 1 || MaxProjects > 1000)
+        {
+            errors.Add("Max projects must be between 1 and 1000");
+        }
+
+        // Validate GitLab-specific requirements
+        if (AnalyzeProject && string.IsNullOrEmpty(GitLabToken) && string.IsNullOrEmpty(GitLabProfile))
+        {
+            errors.Add("GitLab token or profile is required when using --analyze-project");
+        }
+
+        if (AnalyzeProject && string.IsNullOrEmpty(GitLabProject))
+        {
+            errors.Add("GitLab project ID or path is required when using --analyze-project");
+        }
+
+        if ((ListProjects || !string.IsNullOrEmpty(SearchProjects)) && 
+            string.IsNullOrEmpty(GitLabToken) && string.IsNullOrEmpty(GitLabProfile))
+        {
+            errors.Add("GitLab token or profile is required for project discovery operations");
+        }
+
         // Validate conflicting options
         if (ConsoleOutput && !string.IsNullOrEmpty(OutputPath))
         {
@@ -258,6 +378,36 @@ public class CommandLineOptions
         if (ListTemplates && (DryRun || ValidateOnly))
         {
             errors.Add("Cannot use --list-templates with --dry-run or --validate-only options");
+        }
+
+        if (ListProjects && !string.IsNullOrEmpty(SearchProjects))
+        {
+            errors.Add("Cannot specify both --list-projects and --search-projects options");
+        }
+
+        if ((ListProjects || !string.IsNullOrEmpty(SearchProjects)) && AnalyzeProject)
+        {
+            errors.Add("Cannot use project discovery options with --analyze-project");
+        }
+
+        if (!string.IsNullOrEmpty(GitLabProfile) && !string.IsNullOrEmpty(GitLabToken))
+        {
+            errors.Add("Cannot specify both --gitlab-profile and --gitlab-token options");
+        }
+
+        if (PreferDetected && !AnalyzeProject)
+        {
+            errors.Add("--prefer-detected can only be used with --analyze-project");
+        }
+
+        if (ShowConflicts && !AnalyzeProject)
+        {
+            errors.Add("--show-conflicts can only be used with --analyze-project");
+        }
+
+        if (ShowAnalysis && !AnalyzeProject)
+        {
+            errors.Add("--show-analysis can only be used with --analyze-project");
         }
 
         return errors;
@@ -310,6 +460,33 @@ public class CommandLineOptions
             "With caching configuration:",
             "  gitlab-pipeline-generator --type dotnet --cache-paths \"node_modules,~/.nuget/packages\" --cache-key \"$CI_COMMIT_REF_SLUG\"",
             "",
+            "GitLab project analysis:",
+            "  gitlab-pipeline-generator --analyze-project --gitlab-token <token> --gitlab-project group/project",
+            "",
+            "List GitLab projects:",
+            "  gitlab-pipeline-generator --list-projects --gitlab-token <token>",
+            "",
+            "Search GitLab projects:",
+            "  gitlab-pipeline-generator --search-projects \"my-app\" --gitlab-token <token>",
+            "",
+            "Analyze with custom GitLab instance:",
+            "  gitlab-pipeline-generator --analyze-project --gitlab-url https://gitlab.company.com --gitlab-token <token> --gitlab-project 123",
+            "",
+            "Hybrid mode (analysis + manual overrides):",
+            "  gitlab-pipeline-generator --analyze-project --gitlab-token <token> --gitlab-project group/project --type dotnet --dotnet-version 9.0",
+            "",
+            "Analysis with custom depth and exclusions:",
+            "  gitlab-pipeline-generator --analyze-project --gitlab-token <token> --gitlab-project group/project --analysis-depth 3 --analysis-exclude \"*.min.js,node_modules/**\"",
+            "",
+            "Show analysis results before generation:",
+            "  gitlab-pipeline-generator --analyze-project --gitlab-token <token> --gitlab-project group/project --show-analysis --show-conflicts",
+            "",
+            "Use GitLab profile:",
+            "  gitlab-pipeline-generator --analyze-project --gitlab-profile company --gitlab-project group/project",
+            "",
+            "Filter projects by type:",
+            "  gitlab-pipeline-generator --list-projects --gitlab-token <token> --project-filter owned,private --max-projects 20",
+            "",
             "Full example with all options:",
             "  gitlab-pipeline-generator \\",
             "    --type dotnet \\",
@@ -327,6 +504,19 @@ public class CommandLineOptions
             "    --cache-key \"nuget-$CI_COMMIT_REF_SLUG\" \\",
             "    --artifact-paths \"publish,test-results\" \\",
             "    --artifact-expire \"2 weeks\" \\",
+            "    --verbose",
+            "",
+            "Full GitLab analysis example:",
+            "  gitlab-pipeline-generator \\",
+            "    --analyze-project \\",
+            "    --gitlab-token <token> \\",
+            "    --gitlab-project group/my-project \\",
+            "    --analysis-depth 3 \\",
+            "    --show-analysis \\",
+            "    --show-conflicts \\",
+            "    --merge-config \\",
+            "    --include-code-quality \\",
+            "    --include-security \\",
             "    --verbose"
         };
     }

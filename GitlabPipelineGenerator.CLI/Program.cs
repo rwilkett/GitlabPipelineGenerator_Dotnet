@@ -8,6 +8,10 @@ using GitlabPipelineGenerator.Core.Interfaces;
 using GitlabPipelineGenerator.Core.Services;
 using GitlabPipelineGenerator.Core.Builders;
 using GitlabPipelineGenerator.Core.Exceptions;
+using GitlabPipelineGenerator.Core.Models.GitLab;
+using GitlabPipelineGenerator.Core.Models;
+using Microsoft.Extensions.Options;
+using GitlabPipelineGenerator.CLI.Services;
 
 namespace GitlabPipelineGenerator.CLI;
 
@@ -78,6 +82,9 @@ public class Program
 
         services.AddSingleton<IConfiguration>(configuration);
 
+        // Configure GitLab settings
+        services.Configure<GitLabApiSettings>(configuration.GetSection("GitLab"));
+
         // Configure logging
         services.AddLogging(builder =>
         {
@@ -98,8 +105,40 @@ public class Program
         services.AddTransient<IPipelineTemplateService, PipelineTemplateService>();
         services.AddTransient<ITemplateCustomizationService, TemplateCustomizationService>();
 
+        // Register GitLab API services
+        services.AddTransient<IGitLabAuthenticationService, GitLabAuthenticationService>();
+        services.AddTransient<IGitLabProjectService, GitLabProjectService>();
+        services.AddTransient<IProjectAnalysisService, ProjectAnalysisService>();
+        services.AddTransient<IFilePatternAnalyzer, FilePatternAnalyzer>();
+        services.AddTransient<IDependencyAnalyzer, DependencyAnalyzer>();
+        services.AddTransient<IConfigurationAnalyzer, ConfigurationAnalyzer>();
+        services.AddTransient<IAnalysisToPipelineMappingService, AnalysisToPipelineMappingService>();
+        services.AddTransient<IntelligentPipelineGenerator>();
+
+        // Register GitLab error handling and resilience services
+        services.AddSingleton<GitLabApiErrorHandler>();
+        services.AddSingleton<CircuitBreaker>();
+        services.AddTransient<ResilientGitLabService>();
+        services.AddTransient<IGitLabFallbackService, GitLabFallbackService>();
+        services.AddTransient<DegradedAnalysisService>();
+
+        // Register configuration management services
+        services.AddSingleton<ICredentialStorageService, CrossPlatformCredentialStorageService>();
+        services.AddTransient<IConfigurationProfileService, ConfigurationProfileService>();
+        services.AddTransient<IConfigurationManagementService, ConfigurationManagementService>();
+
+        // Register GitLab connection and validation services
+        services.AddTransient<GitLabConnectionValidator>();
+        services.AddTransient<IGitLabPermissionValidator, GitLabPermissionValidator>();
+        services.AddTransient<IGitLabApiErrorHandler, GitLabApiErrorHandler>();
+
+        // Register enhanced pipeline generator
+        services.AddTransient<EnhancedPipelineGenerator>();
+
         // Register CLI services
         services.AddTransient<OutputFormatter>();
+        services.AddTransient<VerboseOutputService>();
+        services.AddTransient<UserFriendlyErrorService>();
 
         _serviceProvider = services.BuildServiceProvider();
     }
@@ -167,6 +206,20 @@ public class Program
             {
                 SampleOutputService.ShowSampleOutput(options.ProjectType);
                 _logger?.LogInformation("Sample output displayed for project type: {ProjectType}", options.ProjectType);
+                return;
+            }
+
+            // Handle GitLab project discovery operations
+            if (options.ListProjects || !string.IsNullOrEmpty(options.SearchProjects))
+            {
+                await HandleProjectDiscoveryAsync(options);
+                return;
+            }
+
+            // Handle GitLab project analysis workflow
+            if (options.AnalyzeProject)
+            {
+                await HandleProjectAnalysisWorkflowAsync(options);
                 return;
             }
 
@@ -377,5 +430,508 @@ public class Program
 
         // Remove duplicates and return unique suggestions
         return suggestions.Distinct().ToList();
+    }
+
+    /// <summary>
+    /// Handles GitLab project discovery operations (list/search projects)
+    /// </summary>
+    /// <param name="options">Command-line options</param>
+    /// <returns>Task representing the async operation</returns>
+    private static async Task HandleProjectDiscoveryAsync(CommandLineOptions options)
+    {
+        _logger?.LogInformation("Starting GitLab project discovery");
+
+        var verboseOutput = new VerboseOutputService(options.Verbose);
+        var errorService = new UserFriendlyErrorService(options.Verbose);
+
+        try
+        {
+            // Authenticate with GitLab
+            var authService = _serviceProvider!.GetRequiredService<IGitLabAuthenticationService>();
+            var connectionOptions = CreateGitLabConnectionOptions(options);
+            
+            var gitlabClient = await ProgressIndicatorService.ExecuteWithProgressAsync(
+                () => authService.AuthenticateAsync(connectionOptions),
+                "Authenticating with GitLab",
+                "GitLab authentication");
+
+            _logger?.LogInformation("Successfully authenticated with GitLab");
+
+            if (options.Verbose)
+            {
+                var userInfo = await authService.GetCurrentUserAsync();
+                verboseOutput.DisplayAuthenticationDetails(connectionOptions, userInfo);
+            }
+
+            // Get project service
+            var projectService = _serviceProvider!.GetRequiredService<IGitLabProjectService>();
+
+            if (options.ListProjects)
+            {
+                await ListProjectsAsync(projectService, options);
+            }
+            else if (!string.IsNullOrEmpty(options.SearchProjects))
+            {
+                await SearchProjectsAsync(projectService, options);
+            }
+        }
+        catch (Exception ex)
+        {
+            _logger?.LogError(ex, "GitLab project discovery failed");
+            
+            errorService.DisplayError(ex, "GitLab project discovery");
+            verboseOutput.DisplayErrorDetails(ex, "Project discovery");
+            
+            throw;
+        }
+    }
+
+    /// <summary>
+    /// Handles GitLab project analysis workflow
+    /// </summary>
+    /// <param name="options">Command-line options</param>
+    /// <returns>Task representing the async operation</returns>
+    private static async Task HandleProjectAnalysisWorkflowAsync(CommandLineOptions options)
+    {
+        _logger?.LogInformation("Starting GitLab project analysis workflow");
+
+        var verboseOutput = new VerboseOutputService(options.Verbose);
+        var errorService = new UserFriendlyErrorService(options.Verbose);
+
+        try
+        {
+            // Authenticate with GitLab
+            var authService = _serviceProvider!.GetRequiredService<IGitLabAuthenticationService>();
+            var connectionOptions = CreateGitLabConnectionOptions(options);
+            
+            var gitlabClient = await ProgressIndicatorService.ExecuteWithProgressAsync(
+                () => authService.AuthenticateAsync(connectionOptions),
+                "Authenticating with GitLab",
+                "GitLab authentication");
+
+            var userInfo = await authService.GetCurrentUserAsync();
+            _logger?.LogInformation("Successfully authenticated with GitLab");
+
+            verboseOutput.DisplayAuthenticationDetails(connectionOptions, userInfo);
+
+            // Get project information
+            var projectService = _serviceProvider!.GetRequiredService<IGitLabProjectService>();
+            var project = await ProgressIndicatorService.ExecuteWithProgressAsync(
+                () => projectService.GetProjectAsync(options.GitLabProject!),
+                "Retrieving project information",
+                "Project information retrieved");
+
+            _logger?.LogInformation("Retrieved project: {ProjectName} ({ProjectId})", project.Name, project.Id);
+
+            Console.WriteLine($"📋 Analyzing project: {project.Name}");
+            Console.WriteLine($"   Path: {project.FullPath}");
+            Console.WriteLine($"   URL: {project.WebUrl}");
+            Console.WriteLine();
+
+            // Get and display project permissions
+            var permissions = await projectService.GetProjectPermissionsAsync(project.Id);
+            verboseOutput.DisplayProjectDetails(project, permissions);
+
+            // Perform project analysis
+            var analysisService = _serviceProvider!.GetRequiredService<IProjectAnalysisService>();
+            var analysisOptions = CreateAnalysisOptions(options);
+            
+            verboseOutput.DisplayAnalysisOptions(analysisOptions);
+
+            var analysisResult = await ProgressIndicatorService.ExecuteWithProgressAsync(
+                () => analysisService.AnalyzeProjectAsync(project, analysisOptions),
+                "Analyzing project structure and dependencies",
+                "Project analysis");
+
+            _logger?.LogInformation("Project analysis completed with confidence: {Confidence}", analysisResult.Confidence);
+
+            // Show analysis results if requested
+            if (options.ShowAnalysis)
+            {
+                DisplayAnalysisResults(analysisResult, options.Verbose);
+                verboseOutput.DisplayAnalysisResults(analysisResult);
+            }
+
+            // Convert CLI options to pipeline options and merge with analysis
+            var basePipelineOptions = OptionsConverter.ToPipelineOptions(options);
+            var enhancedOptions = MergeAnalysisWithOptions(basePipelineOptions, analysisResult, options);
+
+            // Show conflicts if requested
+            if (options.ShowConflicts)
+            {
+                DisplayConfigurationConflicts(basePipelineOptions, enhancedOptions, analysisResult);
+            }
+
+            // Ask for confirmation if analysis preview is enabled
+            if (options.ShowAnalysis && !options.DryRun && !options.ValidateOnly)
+            {
+                Console.WriteLine();
+                Console.Write("Continue with pipeline generation? (y/N): ");
+                var response = Console.ReadLine();
+                if (!string.Equals(response?.Trim(), "y", StringComparison.OrdinalIgnoreCase) &&
+                    !string.Equals(response?.Trim(), "yes", StringComparison.OrdinalIgnoreCase))
+                {
+                    Console.WriteLine("Pipeline generation cancelled.");
+                    return;
+                }
+            }
+
+            // Generate pipeline using intelligent generator
+            var intelligentGenerator = _serviceProvider!.GetRequiredService<IntelligentPipelineGenerator>();
+            _logger?.LogInformation("Generating intelligent pipeline");
+            
+            var pipeline = await ProgressIndicatorService.ExecuteWithProgressAsync(
+                () => intelligentGenerator.GenerateAsync(enhancedOptions),
+                "Generating intelligent pipeline",
+                "Pipeline generation");
+
+            _logger?.LogInformation("Intelligent pipeline generated successfully with {JobCount} jobs", pipeline.Jobs.Count);
+
+            verboseOutput.DisplayPipelineGenerationDetails(pipeline, enhancedOptions);
+
+            // Serialize to YAML
+            var yamlContent = intelligentGenerator.SerializeToYaml(pipeline);
+            _logger?.LogDebug("Pipeline serialized to YAML ({Length} characters)", yamlContent.Length);
+
+            // Handle output
+            var outputFormatter = _serviceProvider!.GetRequiredService<OutputFormatter>();
+            
+            // Validate YAML if verbose mode is enabled
+            if (options.Verbose)
+            {
+                outputFormatter.ValidateYaml(yamlContent, options.Verbose);
+            }
+            
+            if (options.DryRun)
+            {
+                Console.WriteLine("🔍 Dry run - intelligent pipeline generated successfully but not written to file");
+                Console.WriteLine($"Generated pipeline with {pipeline.Jobs.Count} jobs across {pipeline.Stages.Count} stages");
+                Console.WriteLine($"Based on analysis: {analysisResult.DetectedType} project with {analysisResult.Framework.Name}");
+                
+                if (options.Verbose)
+                {
+                    outputFormatter.ShowPipelineStats(yamlContent, options.Verbose);
+                }
+                
+                _logger?.LogInformation("Dry run completed successfully");
+            }
+            else if (options.ConsoleOutput)
+            {
+                await outputFormatter.WriteToConsoleAsync(yamlContent, options.Verbose);
+                
+                if (options.Verbose)
+                {
+                    outputFormatter.ShowPipelineStats(yamlContent, options.Verbose);
+                }
+                
+                _logger?.LogInformation("Pipeline output written to console");
+            }
+            else
+            {
+                var outputPath = options.OutputPath ?? ".gitlab-ci.yml";
+                await outputFormatter.WriteToFileAsync(yamlContent, outputPath, options.Verbose);
+                
+                if (options.Verbose)
+                {
+                    outputFormatter.ShowPipelineStats(yamlContent, options.Verbose);
+                }
+                
+                _logger?.LogInformation("Pipeline written to file: {OutputPath}", outputPath);
+            }
+
+            Console.WriteLine("✓ Intelligent pipeline generation completed successfully");
+            Console.WriteLine($"  Based on {analysisResult.DetectedType} project analysis");
+            if (analysisResult.Warnings.Any())
+            {
+                Console.WriteLine($"  ⚠️  {analysisResult.Warnings.Count} analysis warnings (use --verbose for details)");
+            }
+        }
+        catch (Exception ex)
+        {
+            _logger?.LogError(ex, "GitLab project analysis workflow failed");
+            
+            errorService.DisplayError(ex, "GitLab project analysis workflow");
+            verboseOutput.DisplayErrorDetails(ex, "Project analysis workflow");
+
+            // Offer fallback to manual mode
+            errorService.DisplayInfo("You can still generate a pipeline manually by specifying --type and other options");
+            Console.WriteLine("   Example: gitlab-pipeline-generator --type dotnet --dotnet-version 9.0");
+            Console.WriteLine();
+            
+            throw;
+        }
+    }
+
+    /// <summary>
+    /// Creates GitLab connection options from CLI options
+    /// </summary>
+    /// <param name="options">Command-line options</param>
+    /// <returns>GitLab connection options</returns>
+    private static GitLabConnectionOptions CreateGitLabConnectionOptions(CommandLineOptions options)
+    {
+        return new GitLabConnectionOptions
+        {
+            PersonalAccessToken = options.GitLabToken,
+            InstanceUrl = options.GitLabUrl,
+            ProfileName = options.GitLabProfile,
+            StoreCredentials = false // CLI doesn't store credentials by default
+        };
+    }
+
+    /// <summary>
+    /// Creates analysis options from CLI options
+    /// </summary>
+    /// <param name="options">Command-line options</param>
+    /// <returns>Analysis options</returns>
+    private static AnalysisOptions CreateAnalysisOptions(CommandLineOptions options)
+    {
+        var skipTypes = options.SkipAnalysis?.ToList() ?? new List<string>();
+        
+        return new AnalysisOptions
+        {
+            AnalyzeFiles = !skipTypes.Contains("files", StringComparer.OrdinalIgnoreCase),
+            AnalyzeDependencies = !skipTypes.Contains("dependencies", StringComparer.OrdinalIgnoreCase),
+            AnalyzeExistingCI = !skipTypes.Contains("config", StringComparer.OrdinalIgnoreCase),
+            AnalyzeDeployment = !skipTypes.Contains("deployment", StringComparer.OrdinalIgnoreCase),
+            MaxFileAnalysisDepth = options.AnalysisDepth,
+            ExcludePatterns = options.AnalysisExcludePatterns?.ToList() ?? new List<string>(),
+            IncludeSecurityAnalysis = options.IncludeSecurity
+        };
+    }
+
+    /// <summary>
+    /// Lists GitLab projects based on options
+    /// </summary>
+    /// <param name="projectService">Project service</param>
+    /// <param name="options">Command-line options</param>
+    /// <returns>Task representing the async operation</returns>
+    private static async Task ListProjectsAsync(IGitLabProjectService projectService, CommandLineOptions options)
+    {
+        var listOptions = CreateProjectListOptions(options);
+        
+        var projects = await ProgressIndicatorService.ExecuteWithProgressAsync(
+            () => projectService.ListProjectsAsync(listOptions),
+            "Retrieving project list",
+            "Project list retrieved");
+        
+        Console.WriteLine($"📋 Found {projects.Count()} accessible projects:");
+        Console.WriteLine();
+        
+        foreach (var project in projects)
+        {
+            Console.WriteLine($"  {project.Id,8} | {project.FullPath,-40} | {project.Visibility,-10} | {project.LastActivityAt:yyyy-MM-dd}");
+            if (options.Verbose && !string.IsNullOrEmpty(project.Description))
+            {
+                Console.WriteLine($"           | {project.Description}");
+            }
+        }
+        
+        Console.WriteLine();
+        Console.WriteLine("💡 Use --gitlab-project <id-or-path> to analyze a specific project");
+    }
+
+    /// <summary>
+    /// Searches GitLab projects based on options
+    /// </summary>
+    /// <param name="projectService">Project service</param>
+    /// <param name="options">Command-line options</param>
+    /// <returns>Task representing the async operation</returns>
+    private static async Task SearchProjectsAsync(IGitLabProjectService projectService, CommandLineOptions options)
+    {
+        var projects = await ProgressIndicatorService.ExecuteWithProgressAsync(
+            () => projectService.SearchProjectsAsync(options.SearchProjects!),
+            $"Searching for projects matching '{options.SearchProjects}'",
+            "Project search completed");
+        
+        Console.WriteLine($"🔍 Search results for '{options.SearchProjects}' ({projects.Count()} found):");
+        Console.WriteLine();
+        
+        foreach (var project in projects.Take(options.MaxProjects))
+        {
+            Console.WriteLine($"  {project.Id,8} | {project.FullPath,-40} | {project.Visibility,-10}");
+            if (options.Verbose && !string.IsNullOrEmpty(project.Description))
+            {
+                Console.WriteLine($"           | {project.Description}");
+            }
+        }
+        
+        Console.WriteLine();
+        Console.WriteLine("💡 Use --gitlab-project <id-or-path> to analyze a specific project");
+    }
+
+    /// <summary>
+    /// Creates project list options from CLI options
+    /// </summary>
+    /// <param name="options">Command-line options</param>
+    /// <returns>Project list options</returns>
+    private static ProjectListOptions CreateProjectListOptions(CommandLineOptions options)
+    {
+        var filters = options.ProjectFilter?.ToList() ?? new List<string>();
+        
+        return new ProjectListOptions
+        {
+            OwnedOnly = filters.Contains("owned", StringComparer.OrdinalIgnoreCase),
+            MemberOnly = filters.Contains("member", StringComparer.OrdinalIgnoreCase) || !filters.Any(),
+            Visibility = GetVisibilityFilter(filters),
+            MaxResults = options.MaxProjects
+        };
+    }
+
+    /// <summary>
+    /// Gets visibility filter from project filters
+    /// </summary>
+    /// <param name="filters">Project filters</param>
+    /// <returns>Visibility filter or null</returns>
+    private static ProjectVisibility? GetVisibilityFilter(List<string> filters)
+    {
+        if (filters.Contains("public", StringComparer.OrdinalIgnoreCase))
+            return ProjectVisibility.Public;
+        if (filters.Contains("private", StringComparer.OrdinalIgnoreCase))
+            return ProjectVisibility.Private;
+        if (filters.Contains("internal", StringComparer.OrdinalIgnoreCase))
+            return ProjectVisibility.Internal;
+        
+        return null;
+    }
+
+    /// <summary>
+    /// Displays analysis results to the console
+    /// </summary>
+    /// <param name="result">Analysis result</param>
+    /// <param name="verbose">Whether to show verbose output</param>
+    private static void DisplayAnalysisResults(ProjectAnalysisResult result, bool verbose)
+    {
+        Console.WriteLine("📊 Analysis Results:");
+        Console.WriteLine($"   Project Type: {result.DetectedType}");
+        Console.WriteLine($"   Framework: {result.Framework.Name} {result.Framework.Version}");
+        Console.WriteLine($"   Build Tool: {result.BuildConfig.BuildTool}");
+        Console.WriteLine($"   Confidence: {result.Confidence}");
+        
+        if (result.Dependencies.Dependencies.Any())
+        {
+            Console.WriteLine($"   Dependencies: {result.Dependencies.Dependencies.Count} packages");
+        }
+        
+        if (result.ExistingCI != null)
+        {
+            Console.WriteLine($"   Existing CI: {result.ExistingCI.Type} detected");
+        }
+        
+        if (verbose)
+        {
+            if (result.Framework.DetectedFeatures.Any())
+            {
+                Console.WriteLine("   Features:");
+                foreach (var feature in result.Framework.DetectedFeatures)
+                {
+                    Console.WriteLine($"     - {feature}");
+                }
+            }
+            
+            if (result.BuildConfig.BuildCommands.Any())
+            {
+                Console.WriteLine("   Build Commands:");
+                foreach (var command in result.BuildConfig.BuildCommands)
+                {
+                    Console.WriteLine($"     - {command}");
+                }
+            }
+        }
+        
+        if (result.Warnings.Any())
+        {
+            Console.WriteLine("   ⚠️  Warnings:");
+            foreach (var warning in result.Warnings)
+            {
+                Console.WriteLine($"     - {warning.Message}");
+            }
+        }
+        
+        Console.WriteLine();
+    }
+
+    /// <summary>
+    /// Merges analysis results with CLI options
+    /// </summary>
+    /// <param name="baseOptions">Base pipeline options from CLI</param>
+    /// <param name="analysisResult">Analysis result</param>
+    /// <param name="cliOptions">CLI options for merge behavior</param>
+    /// <returns>Enhanced pipeline options</returns>
+    private static AnalysisBasedPipelineOptions MergeAnalysisWithOptions(
+        PipelineOptions baseOptions, 
+        ProjectAnalysisResult analysisResult, 
+        CommandLineOptions cliOptions)
+    {
+        var enhancedOptions = new AnalysisBasedPipelineOptions
+        {
+            AnalysisResult = analysisResult,
+            PreferDetectedSettings = cliOptions.PreferDetected
+        };
+
+        // Copy base options
+        enhancedOptions.ProjectType = baseOptions.ProjectType;
+        enhancedOptions.Stages = baseOptions.Stages;
+        enhancedOptions.DotNetVersion = baseOptions.DotNetVersion;
+        enhancedOptions.IncludeTests = baseOptions.IncludeTests;
+        enhancedOptions.IncludeDeployment = baseOptions.IncludeDeployment;
+        enhancedOptions.DockerImage = baseOptions.DockerImage;
+        enhancedOptions.RunnerTags = baseOptions.RunnerTags;
+        enhancedOptions.IncludeCodeQuality = baseOptions.IncludeCodeQuality;
+        enhancedOptions.IncludeSecurity = baseOptions.IncludeSecurity;
+        enhancedOptions.IncludePerformance = baseOptions.IncludePerformance;
+        enhancedOptions.Variables = baseOptions.Variables;
+        enhancedOptions.Environments = baseOptions.Environments;
+        enhancedOptions.CachePaths = baseOptions.CachePaths;
+        enhancedOptions.CacheKey = baseOptions.CacheKey;
+        enhancedOptions.ArtifactPaths = baseOptions.ArtifactPaths;
+        enhancedOptions.ArtifactExpireIn = baseOptions.ArtifactExpireIn;
+        enhancedOptions.EnableParallelExecution = baseOptions.EnableParallelExecution;
+        enhancedOptions.EnableCaching = baseOptions.EnableCaching;
+        enhancedOptions.EnableNotifications = baseOptions.EnableNotifications;
+
+        return enhancedOptions;
+    }
+
+    /// <summary>
+    /// Displays configuration conflicts between CLI and analysis
+    /// </summary>
+    /// <param name="cliOptions">CLI-based options</param>
+    /// <param name="enhancedOptions">Enhanced options with analysis</param>
+    /// <param name="analysisResult">Analysis result</param>
+    private static void DisplayConfigurationConflicts(
+        PipelineOptions cliOptions, 
+        AnalysisBasedPipelineOptions enhancedOptions, 
+        ProjectAnalysisResult analysisResult)
+    {
+        Console.WriteLine("⚖️  Configuration Comparison:");
+        
+        // Compare project type
+        if (!string.IsNullOrEmpty(cliOptions.ProjectType) && 
+            !cliOptions.ProjectType.Equals(analysisResult.DetectedType.ToString(), StringComparison.OrdinalIgnoreCase))
+        {
+            Console.WriteLine($"   Project Type: CLI='{cliOptions.ProjectType}' vs Detected='{analysisResult.DetectedType}'");
+        }
+        
+        // Compare .NET version if applicable
+        if (!string.IsNullOrEmpty(cliOptions.DotNetVersion) && 
+            !string.IsNullOrEmpty(analysisResult.Framework.Version) &&
+            !cliOptions.DotNetVersion.Equals(analysisResult.Framework.Version))
+        {
+            Console.WriteLine($"   .NET Version: CLI='{cliOptions.DotNetVersion}' vs Detected='{analysisResult.Framework.Version}'");
+        }
+        
+        // Compare cache paths
+        if (cliOptions.CachePaths.Any() && analysisResult.Dependencies.CacheRecommendation.Paths.Any())
+        {
+            var cliPaths = string.Join(", ", cliOptions.CachePaths);
+            var detectedPaths = string.Join(", ", analysisResult.Dependencies.CacheRecommendation.Paths);
+            if (!cliPaths.Equals(detectedPaths))
+            {
+                Console.WriteLine($"   Cache Paths: CLI='{cliPaths}' vs Detected='{detectedPaths}'");
+            }
+        }
+        
+        Console.WriteLine($"   Resolution: {(enhancedOptions.PreferDetectedSettings ? "Preferring detected settings" : "Preferring CLI settings")}");
+        Console.WriteLine();
     }
 }
