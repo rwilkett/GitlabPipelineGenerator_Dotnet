@@ -1,9 +1,8 @@
 using GitlabPipelineGenerator.Core.Exceptions;
 using GitlabPipelineGenerator.Core.Interfaces;
 using GitlabPipelineGenerator.Core.Models.GitLab;
-using GitLabApiClient;
-using GitLabApiClient.Models.Projects.Requests;
-using GitLabApiClient.Models.Projects.Responses;
+using GitlabPipelineGenerator.GitLabApiClient;
+using GitlabPipelineGenerator.GitLabApiClient.Models;
 using Microsoft.Extensions.Logging;
 
 namespace GitlabPipelineGenerator.Core.Services;
@@ -16,7 +15,7 @@ public class GitLabProjectService : IGitLabProjectService
     private readonly IGitLabAuthenticationService _authService;
     private readonly ILogger<GitLabProjectService> _logger;
     private readonly ResilientGitLabService _resilientService;
-    private GitLabClient? _client;
+    private GitlabPipelineGenerator.GitLabApiClient.GitLabClient? _client;
 
     public GitLabProjectService(
         IGitLabAuthenticationService authService,
@@ -45,30 +44,20 @@ public class GitLabProjectService : IGitLabProjectService
                 _logger.LogDebug("Retrieving project: {ProjectIdentifier}", projectIdOrPath);
 
                 Project project;
-                
-                // Try to parse as numeric ID first
-                if (int.TryParse(projectIdOrPath, out var projectId))
-                {
-                    project = await client.Projects.GetAsync(projectId.ToString());
-                }
-                else
-                {
-                    // Treat as project path (namespace/project)
-                    var encodedPath = Uri.EscapeDataString(projectIdOrPath);
-                    project = await client.Projects.GetAsync(encodedPath);
-                }
+
+                project = await client.GetProjectAsync(projectIdOrPath);
 
                 var result = MapToGitLabProject(project);
                 _logger.LogDebug("Successfully retrieved project: {ProjectName} (ID: {ProjectId})", result.Name, result.Id);
-                
+
                 return result;
             }
-            catch (GitLabApiClient.GitLabException ex) when (ex.HttpStatusCode == System.Net.HttpStatusCode.NotFound)
+            catch (GitLabApiException ex) when (ex.StatusCode == System.Net.HttpStatusCode.NotFound)
             {
                 _logger.LogWarning("Project not found: {ProjectIdentifier}", projectIdOrPath);
                 throw new ProjectNotFoundException(projectIdOrPath, $"Project '{projectIdOrPath}' was not found or you don't have access to it");
             }
-            catch (GitLabApiClient.GitLabException ex) when (ex.HttpStatusCode == System.Net.HttpStatusCode.Forbidden)
+            catch (GitLabApiException ex) when (ex.StatusCode == System.Net.HttpStatusCode.Forbidden)
             {
                 _logger.LogWarning("Access denied to project: {ProjectIdentifier}", projectIdOrPath);
                 throw new ProjectNotFoundException(projectIdOrPath, $"Access denied to project '{projectIdOrPath}'. You may not have sufficient permissions");
@@ -90,11 +79,11 @@ public class GitLabProjectService : IGitLabProjectService
 
         try
         {
-            _logger.LogDebug("Listing projects with options: Owned={Owned}, Member={Member}, Visibility={Visibility}", 
+            _logger.LogDebug("Listing projects with options: Owned={Owned}, Member={Member}, Visibility={Visibility}",
                 options.OwnedOnly, options.MemberOnly, options.Visibility);
 
-            // Simplified implementation - get all projects and filter in memory
-            var projects = await client.Projects.GetAsync();
+            // Get projects with basic filtering
+            var projects = await client.GetProjectsAsync(owned: options.OwnedOnly, perPage: options.MaxResults > 0 ? options.MaxResults : 100);
             var results = projects.Select(MapToGitLabProject).ToList();
 
             // Apply MaxResults limit if specified
@@ -128,7 +117,7 @@ public class GitLabProjectService : IGitLabProjectService
         _logger.LogDebug("Searching projects with term: {SearchTerm}", searchTerm);
 
         var results = await ListProjectsAsync(searchOptions, cancellationToken);
-        
+
         // Apply relevance scoring - projects with search term in name get higher priority
         var scoredResults = results.Select(project => new
         {
@@ -143,7 +132,7 @@ public class GitLabProjectService : IGitLabProjectService
     }
 
     /// <inheritdoc />
-    public async Task<ProjectPermissions> GetProjectPermissionsAsync(int projectId, CancellationToken cancellationToken = default)
+    public async Task<Core.Models.GitLab.ProjectPermissions> GetProjectPermissionsAsync(int projectId, CancellationToken cancellationToken = default)
     {
         var client = await GetAuthenticatedClientAsync();
 
@@ -152,30 +141,34 @@ public class GitLabProjectService : IGitLabProjectService
             _logger.LogDebug("Getting permissions for project: {ProjectId}", projectId);
 
             // Get project details which include permissions
-            var project = await client.Projects.GetAsync(projectId.ToString());
-            
-            var permissions = new ProjectPermissions
+            var project = await client.GetProjectAsync(projectId.ToString());
+
+            // Check ProjectAccess first, fall back to GroupAccess if ProjectAccess is null
+            var accessLevel = project.Permissions?.ProjectAccess?.AccessLevel ??
+                             project.Permissions?.GroupAccess?.AccessLevel ?? 0;
+
+            var permissions = new Core.Models.GitLab.ProjectPermissions
             {
                 ProjectId = projectId,
-                AccessLevel = MapFromGitLabAccessLevel(project.Permissions?.ProjectAccess?.AccessLevel ?? 0),
+                AccessLevel = MapFromGitLabAccessLevel(accessLevel),
                 CanReadProject = true, // If we can get the project, we can read it
-                CanReadRepository = HasRepositoryAccess(project.Permissions?.ProjectAccess?.AccessLevel ?? 0),
-                CanReadCiCd = HasCiCdAccess(project.Permissions?.ProjectAccess?.AccessLevel ?? 0),
-                CanWriteRepository = HasWriteAccess(project.Permissions?.ProjectAccess?.AccessLevel ?? 0),
-                CanManageCiCd = HasManageAccess(project.Permissions?.ProjectAccess?.AccessLevel ?? 0),
+                CanReadRepository = HasRepositoryAccess(accessLevel),
+                CanReadCiCd = HasCiCdAccess(accessLevel),
+                CanWriteRepository = HasWriteAccess(accessLevel),
+                CanManageCiCd = HasManageAccess(accessLevel),
                 CanReadIssues = project.IssuesEnabled,
                 CanReadMergeRequests = project.MergeRequestsEnabled,
                 CanReadWiki = project.WikiEnabled,
                 CanReadSnippets = project.SnippetsEnabled,
-                CanReadArtifacts = HasArtifactAccess(project.Permissions?.ProjectAccess?.AccessLevel ?? 0)
+                CanReadArtifacts = HasArtifactAccess(accessLevel)
             };
 
-            _logger.LogDebug("Retrieved permissions for project {ProjectId}: AccessLevel={AccessLevel}", 
+            _logger.LogDebug("Retrieved permissions for project {ProjectId}: AccessLevel={AccessLevel}",
                 projectId, permissions.AccessLevel);
 
             return permissions;
         }
-        catch (GitLabApiClient.GitLabException ex) when (ex.HttpStatusCode == System.Net.HttpStatusCode.NotFound)
+        catch (GitLabApiException ex) when (ex.StatusCode == System.Net.HttpStatusCode.NotFound)
         {
             _logger.LogWarning("Project not found when getting permissions: {ProjectId}", projectId);
             throw new ProjectNotFoundException(projectId.ToString(), $"Project with ID '{projectId}' was not found or you don't have access to it");
@@ -198,7 +191,7 @@ public class GitLabProjectService : IGitLabProjectService
             if (!hasPermissions)
             {
                 var missing = permissions.GetMissingPermissions(requiredPermissions);
-                _logger.LogWarning("Insufficient permissions for project {ProjectId}. Missing: {MissingPermissions}", 
+                _logger.LogWarning("Insufficient permissions for project {ProjectId}. Missing: {MissingPermissions}",
                     projectId, string.Join(", ", missing));
             }
 
@@ -216,22 +209,30 @@ public class GitLabProjectService : IGitLabProjectService
     /// <summary>
     /// Gets an authenticated GitLab client
     /// </summary>
-    private async Task<GitLabClient> GetAuthenticatedClientAsync()
+    private async Task<GitlabPipelineGenerator.GitLabApiClient.GitLabClient> GetAuthenticatedClientAsync()
     {
         if (_client != null)
         {
             return _client;
         }
 
-        // Try to load stored credentials
-        var storedOptions = _authService.LoadStoredCredentials();
-        if (storedOptions != null)
+        // Try to load stored credentials and authenticate
+        var storedCredentials = _authService.LoadStoredCredentials();
+        if (storedCredentials != null)
         {
-            _client = await _authService.AuthenticateAsync(storedOptions);
+            _client = await _authService.AuthenticateAsync(storedCredentials);
             return _client;
         }
 
         throw new InvalidOperationException("No authenticated GitLab client available. Please authenticate first using the authentication service.");
+    }
+
+    /// <summary>
+    /// Sets the authenticated client (called by the authentication service)
+    /// </summary>
+    public void SetAuthenticatedClient(GitlabPipelineGenerator.GitLabApiClient.GitLabClient client)
+    {
+        _client = client ?? throw new ArgumentNullException(nameof(client));
     }
 
     /// <summary>
@@ -265,27 +266,27 @@ public class GitLabProjectService : IGitLabProjectService
     /// <summary>
     /// Maps our visibility enum to GitLab API visibility
     /// </summary>
-    private static ProjectVisibilityLevel MapVisibility(ProjectVisibility visibility)
+    private static string MapVisibility(ProjectVisibility visibility)
     {
         return visibility switch
         {
-            ProjectVisibility.Private => ProjectVisibilityLevel.Private,
-            ProjectVisibility.Internal => ProjectVisibilityLevel.Internal,
-            ProjectVisibility.Public => ProjectVisibilityLevel.Public,
-            _ => ProjectVisibilityLevel.Private
+            ProjectVisibility.Private => "private",
+            ProjectVisibility.Internal => "internal",
+            ProjectVisibility.Public => "public",
+            _ => "private"
         };
     }
 
     /// <summary>
     /// Maps GitLab API visibility to our enum
     /// </summary>
-    private static ProjectVisibility MapFromGitLabVisibility(ProjectVisibilityLevel visibility)
+    private static ProjectVisibility MapFromGitLabVisibility(string visibility)
     {
         return visibility switch
         {
-            ProjectVisibilityLevel.Public => ProjectVisibility.Public,
-            ProjectVisibilityLevel.Internal => ProjectVisibility.Internal,
-            ProjectVisibilityLevel.Private => ProjectVisibility.Private,
+            "public" => ProjectVisibility.Public,
+            "internal" => ProjectVisibility.Internal,
+            "private" => ProjectVisibility.Private,
             _ => ProjectVisibility.Private
         };
     }
@@ -293,16 +294,16 @@ public class GitLabProjectService : IGitLabProjectService
     /// <summary>
     /// Maps our access level enum to GitLab API access level
     /// </summary>
-    private static GitLabApiClient.Models.AccessLevel MapAccessLevel(AccessLevel accessLevel)
+    private static int MapAccessLevel(AccessLevel accessLevel)
     {
         return accessLevel switch
         {
-            AccessLevel.Guest => GitLabApiClient.Models.AccessLevel.Guest,
-            AccessLevel.Reporter => GitLabApiClient.Models.AccessLevel.Reporter,
-            AccessLevel.Developer => GitLabApiClient.Models.AccessLevel.Developer,
-            AccessLevel.Maintainer => GitLabApiClient.Models.AccessLevel.Maintainer,
-            AccessLevel.Owner => GitLabApiClient.Models.AccessLevel.Owner,
-            _ => GitLabApiClient.Models.AccessLevel.Guest
+            AccessLevel.Guest => 10,
+            AccessLevel.Reporter => 20,
+            AccessLevel.Developer => 30,
+            AccessLevel.Maintainer => 40,
+            AccessLevel.Owner => 50,
+            _ => 10
         };
     }
 
@@ -376,7 +377,7 @@ public class GitLabProjectService : IGitLabProjectService
         }
 
         // Description matches
-        if (!string.IsNullOrEmpty(project.Description) && 
+        if (!string.IsNullOrEmpty(project.Description) &&
             project.Description.Contains(lowerSearchTerm, StringComparison.OrdinalIgnoreCase))
         {
             score += 20;
@@ -417,4 +418,58 @@ public class GitLabProjectService : IGitLabProjectService
     private static bool HasArtifactAccess(int accessLevel) => accessLevel >= 20; // Reporter and above
 
     #endregion
+
+    /// <inheritdoc />
+    public async Task<IEnumerable<GitLabRepositoryFile>> GetRepositoryFilesAsync(int projectId, string path = "", bool recursive = false, CancellationToken cancellationToken = default)
+    {
+        var client = await GetAuthenticatedClientAsync();
+
+        try
+        {
+            _logger.LogDebug("Getting repository files for project {ProjectId}, path: {Path}, recursive: {Recursive}", projectId, path, recursive);
+
+            var repositoryFiles = await client.Files.GetAsync(projectId.ToString(), path);
+
+            var files = new List<GitLabRepositoryFile>
+            {
+                new GitLabRepositoryFile
+                {
+                    Name = repositoryFiles.Filename,
+                    Path = repositoryFiles.FullPath,
+                    Type = repositoryFiles.GetType().Name,
+                    Size = repositoryFiles.Size
+                }
+            };
+
+            _logger.LogDebug("Retrieved {Count} files from repository", files.Count);
+            return files;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Failed to get repository files for project: {ProjectId}", projectId);
+            throw new GitLabApiException($"Failed to get repository files for project '{projectId}': {ex.Message}", ex);
+        }
+    }
+
+    /// <inheritdoc />
+    public async Task<string> GetFileContentAsync(int projectId, string filePath, string? branch = null, CancellationToken cancellationToken = default)
+    {
+        var client = await GetAuthenticatedClientAsync();
+
+        try
+        {
+            _logger.LogDebug("Getting file content for project {ProjectId}, file: {FilePath}, branch: {Branch}", projectId, filePath, branch);
+
+            var file = await client.Files.GetAsync(projectId.ToString(), filePath, branch ?? "HEAD");
+            var content = System.Text.Encoding.UTF8.GetString(Convert.FromBase64String(file.Content));
+
+            _logger.LogDebug("Retrieved content for file {FilePath} ({Size} characters)", filePath, content.Length);
+            return content;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Failed to get file content for project {ProjectId}, file: {FilePath}", projectId, filePath);
+            throw new GitLabApiException($"Failed to get file content for '{filePath}' in project '{projectId}': {ex.Message}", ex);
+        }
+    }
 }

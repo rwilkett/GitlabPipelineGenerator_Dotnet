@@ -68,16 +68,16 @@ Create a GitLab Personal Access Token:
 #### 2. Discover Projects
 ```bash
 # List your GitLab projects
-gitlab-pipeline-generator --list-projects --gitlab-token <your-token>
+gitlab-pipeline-gen --list-projects --gitlab-token <your-token>
 
 # Search for specific projects
-gitlab-pipeline-generator --search-projects "my-app" --gitlab-token <your-token>
+gitlab-pipeline-gen --search-projects "my-app" --gitlab-token <your-token>
 ```
 
 #### 3. Intelligent Pipeline Generation
 ```bash
 # Analyze project and generate intelligent pipeline
-gitlab-pipeline-generator \
+gitlab-pipeline-gen \
   --analyze-project \
   --gitlab-token <your-token> \
   --gitlab-project group/my-project

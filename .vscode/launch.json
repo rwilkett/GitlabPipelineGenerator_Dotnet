@@ -1,0 +1,102 @@
+{
+    "version": "0.2.0",
+    "configurations": [
+        {
+            "name": "Debug - Basic .NET Pipeline",
+            "type": "coreclr",
+            "request": "launch",
+            "program": "${workspaceFolder}/GitlabPipelineGenerator.CLI/bin/Debug/net9.0/GitlabPipelineGenerator.CLI.dll",
+            "args": [
+                "--type",
+                "dotnet",
+                "--dotnet-version",
+                "9.0",
+                "--verbose"
+            ],
+            "cwd": "${workspaceFolder}",
+            "console": "integratedTerminal",
+            "stopAtEntry": false,
+            "preLaunchTask": "build-debug"
+        },
+        {
+            "name": "Debug - GitLab Analysis",
+            "type": "coreclr",
+            "request": "launch",
+            "program": "${workspaceFolder}/GitlabPipelineGenerator.CLI/bin/Debug/net9.0/GitlabPipelineGenerator.CLI.dll",
+            "args": [
+                "--analyze-project",
+                "--type",
+                "dotnet",
+                "--gitlab-token",
+                "${input:gitlabToken}",
+                "--gitlab-project",
+                "${input:gitlabProject}",
+                "--verbose"
+            ],
+            "cwd": "${workspaceFolder}",
+            "console": "integratedTerminal",
+            "stopAtEntry": false,
+            "preLaunchTask": "build-debug"
+        },
+        {
+            "name": "Debug - Help",
+            "type": "coreclr",
+            "request": "launch",
+            "program": "${workspaceFolder}/GitlabPipelineGenerator.CLI/bin/Debug/net9.0/GitlabPipelineGenerator.CLI.dll",
+            "args": [
+                "--help"
+            ],
+            "cwd": "${workspaceFolder}",
+            "console": "integratedTerminal",
+            "stopAtEntry": false,
+            "preLaunchTask": "build-debug"
+        },
+        {
+            "name": "Release - Basic .NET Pipeline",
+            "type": "coreclr",
+            "request": "launch",
+            "program": "${workspaceFolder}/GitlabPipelineGenerator.CLI/bin/Release/net9.0/GitlabPipelineGenerator.CLI.dll",
+            "args": [
+                "--type",
+                "dotnet",
+                "--dotnet-version",
+                "9.0"
+            ],
+            "cwd": "${workspaceFolder}",
+            "console": "integratedTerminal",
+            "stopAtEntry": false,
+            "preLaunchTask": "build-release"
+        },
+        {
+            "name": "Release - GitLab Analysis",
+            "type": "coreclr",
+            "request": "launch",
+            "program": "${workspaceFolder}/GitlabPipelineGenerator.CLI/bin/Release/net9.0/GitlabPipelineGenerator.CLI.dll",
+            "args": [
+                "--analyze-project",
+                "--gitlab-token",
+                "${input:gitlabToken}",
+                "--gitlab-project",
+                "${input:gitlabProject}"
+            ],
+            "cwd": "${workspaceFolder}",
+            "console": "integratedTerminal",
+            "stopAtEntry": false,
+            "preLaunchTask": "build-release"
+        }
+    ],
+    "inputs": [
+        {
+            "id": "gitlabToken",
+            "description": "GitLab Personal Access Token",
+            "default": "glpat-bNv6xY3FanPh7j7KMOZ74W86MQp1OmgwcG4wCw.01.1205yrkoy",
+            "type": "promptString"
+        },
+        {
+            "id": "gitlabProject",
+            "description": "GitLab Project (group/project)",
+            "default": "bluecross-of-idaho/devops/sandbox/bci.claims.cicd",
+            "type": "promptString"
+        }
+    ]
+}

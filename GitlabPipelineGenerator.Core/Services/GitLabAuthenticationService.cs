@@ -1,6 +1,6 @@
 using GitlabPipelineGenerator.Core.Interfaces;
 using GitlabPipelineGenerator.Core.Models.GitLab;
-using GitLabApiClient;
+using GitlabPipelineGenerator.GitLabApiClient;
 using Microsoft.Extensions.Logging;
 using System.Security;
 using System.Text.Json;
@@ -49,10 +49,10 @@ public class GitLabAuthenticationService : IGitLabAuthenticationService
             _logger.LogInformation("Authenticating with GitLab instance: {InstanceUrl}", options.InstanceUrl);
 
             var client = new GitLabClient(options.InstanceUrl, options.PersonalAccessToken);
-            
+
             // Test the connection by making a simple API call with resilience
             await TestConnectionAsync(client, cancellationToken);
-            
+
             _logger.LogInformation("Successfully authenticated with GitLab instance");
 
             _currentClient = client;
@@ -116,12 +116,12 @@ public class GitLabAuthenticationService : IGitLabAuthenticationService
             var userInfo = new GitLabUserInfo
             {
                 Id = 0,
-                Username = "authenticated_user",
+                Username = "Username",
                 Name = "Authenticated User",
                 Email = "user@example.com",
                 State = "active"
             };
-            
+
             return Task.FromResult(userInfo);
         }
         catch (Exception ex)
@@ -215,7 +215,7 @@ public class GitLabAuthenticationService : IGitLabAuthenticationService
             // Clear all named profiles
             var profiles = GetStoredProfiles().ToList();
             var profilesCleared = 0;
-            
+
             foreach (var profile in profiles)
             {
                 var success = _credentialStorage.DeleteCredentialAsync($"{ProfilePrefix}{profile}").GetAwaiter().GetResult();
@@ -225,7 +225,7 @@ public class GitLabAuthenticationService : IGitLabAuthenticationService
                 }
             }
 
-            _logger.LogInformation("Cleared {ProfileCount} stored credential profiles. Default profile cleared: {DefaultCleared}", 
+            _logger.LogInformation("Cleared {ProfileCount} stored credential profiles. Default profile cleared: {DefaultCleared}",
                 profilesCleared, defaultCleared);
         }
         catch (Exception ex)
@@ -241,7 +241,7 @@ public class GitLabAuthenticationService : IGitLabAuthenticationService
         try
         {
             var targets = _credentialStorage.ListCredentialTargetsAsync(ProfilePrefix).GetAwaiter().GetResult();
-            
+
             // Extract profile names from targets by removing the prefix
             var profiles = targets
                 .Where(target => target.StartsWith(ProfilePrefix))
@@ -269,11 +269,8 @@ public class GitLabAuthenticationService : IGitLabAuthenticationService
         try
         {
             // Try to get projects as a basic connectivity test
-            var projects = await client.Projects.GetAsync(options => 
-            {
-                options.Simple = true;
-            });
-            
+            var projects = await client.GetProjectsAsync(owned: true, perPage: 1);
+
             // If we get here without exception, the connection works
             _logger.LogDebug("Connection test successful");
         }

@@ -12,15 +12,18 @@ public class ProjectAnalysisService : IProjectAnalysisService
     private readonly IFilePatternAnalyzer _filePatternAnalyzer;
     private readonly IDependencyAnalyzer _dependencyAnalyzer;
     private readonly IConfigurationAnalyzer _configurationAnalyzer;
+    private readonly IGitLabProjectService _gitLabProjectService;
 
     public ProjectAnalysisService(
         IFilePatternAnalyzer filePatternAnalyzer,
         IDependencyAnalyzer dependencyAnalyzer,
-        IConfigurationAnalyzer configurationAnalyzer)
+        IConfigurationAnalyzer configurationAnalyzer,
+        IGitLabProjectService gitLabProjectService)
     {
         _filePatternAnalyzer = filePatternAnalyzer ?? throw new ArgumentNullException(nameof(filePatternAnalyzer));
         _dependencyAnalyzer = dependencyAnalyzer ?? throw new ArgumentNullException(nameof(dependencyAnalyzer));
         _configurationAnalyzer = configurationAnalyzer ?? throw new ArgumentNullException(nameof(configurationAnalyzer));
+        _gitLabProjectService = gitLabProjectService ?? throw new ArgumentNullException(nameof(gitLabProjectService));
     }
 
     public async Task<ProjectAnalysisResult> AnalyzeProjectAsync(GitLabProject project, AnalysisOptions options)
@@ -52,7 +55,7 @@ public class ProjectAnalysisService : IProjectAnalysisService
             // Analyze dependencies
             if (options.AnalyzeDependencies)
             {
-                result.Dependencies = await AnalyzeProjectDependenciesAsync(files);
+                result.Dependencies = await AnalyzeProjectDependenciesAsync(project, files);
                 result.Metadata.AnalyzedComponents.Add("DependencyAnalyzer");
             }
 
@@ -153,7 +156,7 @@ public class ProjectAnalysisService : IProjectAnalysisService
     public async Task<DependencyInfo> AnalyzeDependenciesAsync(GitLabProject project)
     {
         var files = await GetProjectFilesAsync(project, new AnalysisOptions { AnalyzeDependencies = true });
-        return await AnalyzeProjectDependenciesAsync(files);
+        return await AnalyzeProjectDependenciesAsync(project, files);
     }
 
     public async Task<DeploymentInfo> AnalyzeDeploymentConfigurationAsync(GitLabProject project)
@@ -172,22 +175,7 @@ public class ProjectAnalysisService : IProjectAnalysisService
 
     private async Task<List<GitLabRepositoryFile>> GetProjectFilesAsync(GitLabProject project, AnalysisOptions options)
     {
-        // In a real implementation, this would fetch files from GitLab API
-        // For now, we'll simulate with common project files
-        
-        var files = new List<GitLabRepositoryFile>();
-
-        // Simulate common files based on project patterns
-        files.AddRange(new[]
-        {
-            new GitLabRepositoryFile { Name = "package.json", Path = "package.json", Type = "blob", Size = 1024 },
-            new GitLabRepositoryFile { Name = "README.md", Path = "README.md", Type = "blob", Size = 2048 },
-            new GitLabRepositoryFile { Name = "src", Path = "src", Type = "tree", Size = 0 },
-            new GitLabRepositoryFile { Name = "index.js", Path = "src/index.js", Type = "blob", Size = 512 },
-            new GitLabRepositoryFile { Name = ".gitignore", Path = ".gitignore", Type = "blob", Size = 256 },
-            new GitLabRepositoryFile { Name = "Dockerfile", Path = "Dockerfile", Type = "blob", Size = 800 },
-            new GitLabRepositoryFile { Name = ".gitlab-ci.yml", Path = ".gitlab-ci.yml", Type = "blob", Size = 1500 }
-        });
+        var files = (await _gitLabProjectService.GetRepositoryFilesAsync(project.Id, "", recursive: true)).ToList();
 
         // Filter files based on analysis options
         if (!options.AnalyzeFiles)
@@ -211,7 +199,7 @@ public class ProjectAnalysisService : IProjectAnalysisService
         return files;
     }
 
-    private async Task<DependencyInfo> AnalyzeProjectDependenciesAsync(List<GitLabRepositoryFile> files)
+    private async Task<DependencyInfo> AnalyzeProjectDependenciesAsync(GitLabProject project, List<GitLabRepositoryFile> files)
     {
         var packageFiles = files.Where(f => IsPackageFile(f.Name)).ToList();
         
@@ -222,7 +210,7 @@ public class ProjectAnalysisService : IProjectAnalysisService
 
         // Analyze the first package file found (in real implementation, analyze all)
         var packageFile = packageFiles.First();
-        var content = await GetFileContentAsync(packageFile);
+        var content = await _gitLabProjectService.GetFileContentAsync(project.Id, packageFile.Path);
         
         return await _dependencyAnalyzer.AnalyzePackageFileAsync(packageFile.Name, content);
     }
@@ -400,51 +388,9 @@ public class ProjectAnalysisService : IProjectAnalysisService
                fileName.EndsWith(".csproj", StringComparison.OrdinalIgnoreCase);
     }
 
-    private async Task<string> GetFileContentAsync(GitLabRepositoryFile file)
+    /// <inheritdoc />
+    public void SetAuthenticatedClient(GitLabApiClient.GitLabClient client)
     {
-        // In a real implementation, this would fetch file content from GitLab API
-        // For simulation, return sample content based on file type
-        
-        await Task.Delay(1);
-        
-        return file.Name.ToLowerInvariant() switch
-        {
-            "package.json" => """
-                {
-                  "name": "sample-project",
-                  "version": "1.0.0",
-                  "dependencies": {
-                    "express": "^4.18.0",
-                    "lodash": "^4.17.21"
-                  },
-                  "devDependencies": {
-                    "jest": "^28.0.0",
-                    "nodemon": "^2.0.0"
-                  },
-                  "scripts": {
-                    "start": "node index.js",
-                    "test": "jest",
-                    "build": "webpack"
-                  }
-                }
-                """,
-            var name when name.EndsWith(".csproj") => """
-                <Project Sdk="Microsoft.NET.Sdk.Web">
-                  <PropertyGroup>
-                    <TargetFramework>net8.0</TargetFramework>
-                  </PropertyGroup>
-                  <ItemGroup>
-                    <PackageReference Include="Microsoft.AspNetCore.App" />
-                    <PackageReference Include="Newtonsoft.Json" Version="13.0.1" />
-                  </ItemGroup>
-                </Project>
-                """,
-            "requirements.txt" => """
-                django>=4.0.0
-                requests>=2.28.0
-                pytest>=7.0.0
-                """,
-            _ => string.Empty
-        };
+        _gitLabProjectService.SetAuthenticatedClient(client);
     }
 }

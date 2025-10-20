@@ -56,4 +56,30 @@ public interface IGitLabProjectService
     /// <exception cref="ProjectNotFoundException">When project is not found or not accessible</exception>
     /// <exception cref="GitLabApiException">When API operation fails</exception>
     Task<bool> HasSufficientPermissionsAsync(int projectId, RequiredPermissions requiredPermissions, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Sets the authenticated GitLab client for this service
+    /// </summary>
+    /// <param name="client">Authenticated GitLab client</param>
+    void SetAuthenticatedClient(GitlabPipelineGenerator.GitLabApiClient.GitLabClient client);
+
+    /// <summary>
+    /// Gets repository files for a project
+    /// </summary>
+    /// <param name="projectId">Project ID</param>
+    /// <param name="path">Path to retrieve files from (empty for root)</param>
+    /// <param name="recursive">Whether to retrieve files recursively</param>
+    /// <param name="cancellationToken">Cancellation token</param>
+    /// <returns>Collection of repository files</returns>
+    Task<IEnumerable<GitLabRepositoryFile>> GetRepositoryFilesAsync(int projectId, string path = "", bool recursive = false, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Gets content of a specific file
+    /// </summary>
+    /// <param name="projectId">Project ID</param>
+    /// <param name="filePath">Path to the file</param>
+    /// <param name="branch">Branch name (optional, uses default branch if not specified)</param>
+    /// <param name="cancellationToken">Cancellation token</param>
+    /// <returns>File content as string</returns>
+    Task<string> GetFileContentAsync(int projectId, string filePath, string? branch = null, CancellationToken cancellationToken = default);
 }

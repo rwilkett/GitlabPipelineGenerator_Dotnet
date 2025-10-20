@@ -304,7 +304,7 @@ public class CommandLineOptions
             {
                 errors.Add($"Invalid GitLab URL format: {GitLabUrl}");
             }
-            else if (!gitlabUri.Scheme.Equals("http", StringComparison.OrdinalIgnoreCase) && 
+            else if (!gitlabUri.Scheme.Equals("http", StringComparison.OrdinalIgnoreCase) &&
                      !gitlabUri.Scheme.Equals("https", StringComparison.OrdinalIgnoreCase))
             {
                 errors.Add($"GitLab URL must use HTTP or HTTPS protocol: {GitLabUrl}");
@@ -360,7 +360,7 @@ public class CommandLineOptions
             errors.Add("GitLab project ID or path is required when using --analyze-project");
         }
 
-        if ((ListProjects || !string.IsNullOrEmpty(SearchProjects)) && 
+        if ((ListProjects || !string.IsNullOrEmpty(SearchProjects)) &&
             string.IsNullOrEmpty(GitLabToken) && string.IsNullOrEmpty(GitLabProfile))
         {
             errors.Add("GitLab token or profile is required for project discovery operations");

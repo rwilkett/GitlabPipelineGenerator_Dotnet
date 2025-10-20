@@ -42,4 +42,10 @@ public interface IProjectAnalysisService
     /// <param name="project">GitLab project to analyze</param>
     /// <returns>Deployment information</returns>
     Task<DeploymentInfo> AnalyzeDeploymentConfigurationAsync(GitLabProject project);
+
+    /// <summary>
+    /// Sets the authenticated GitLab client for this service
+    /// </summary>
+    /// <param name="client">Authenticated GitLab client</param>
+    void SetAuthenticatedClient(GitLabApiClient.GitLabClient client);
 }

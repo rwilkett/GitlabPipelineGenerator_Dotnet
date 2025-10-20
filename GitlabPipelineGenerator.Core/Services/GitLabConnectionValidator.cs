@@ -1,5 +1,5 @@
 using GitlabPipelineGenerator.Core.Models.GitLab;
-using GitLabApiClient;
+using GitlabPipelineGenerator.GitLabApiClient;
 using Microsoft.Extensions.Logging;
 
 namespace GitlabPipelineGenerator.Core.Services;
