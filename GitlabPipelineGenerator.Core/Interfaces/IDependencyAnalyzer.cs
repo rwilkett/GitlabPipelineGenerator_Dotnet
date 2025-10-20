@@ -16,6 +16,13 @@ public interface IDependencyAnalyzer
     Task<DependencyInfo> AnalyzePackageFileAsync(string fileName, string content);
 
     /// <summary>
+    /// Analyzes package files based on file names only (metadata-based analysis)
+    /// </summary>
+    /// <param name="packageFileNames">List of package file names</param>
+    /// <returns>Dependency information based on file presence</returns>
+    Task<DependencyInfo> AnalyzePackageFilesAsync(List<string> packageFileNames);
+
+    /// <summary>
     /// Recommends cache configuration based on detected dependencies
     /// </summary>
     /// <param name="dependencies">Dependency information</param>

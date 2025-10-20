@@ -103,8 +103,22 @@ public class Program
         services.AddTransient<ValidationService>();
 
         // Register template services if they exist
-        services.AddTransient<IPipelineTemplateService, PipelineTemplateService>();
         services.AddTransient<ITemplateCustomizationService, TemplateCustomizationService>();
+
+        // Register pipeline templates
+        services.AddTransient<GitlabPipelineGenerator.Core.Templates.DotNetProjectTemplate>();
+        services.AddTransient<GitlabPipelineGenerator.Core.Templates.PythonProjectTemplate>();
+        services.AddTransient<GitlabPipelineGenerator.Core.Templates.JavaScriptProjectTemplate>();
+
+        // Configure template service with all templates
+        services.AddSingleton<IPipelineTemplateService>(provider =>
+        {
+            var templateService = new PipelineTemplateService();
+            templateService.RegisterTemplate(provider.GetRequiredService<GitlabPipelineGenerator.Core.Templates.DotNetProjectTemplate>());
+            templateService.RegisterTemplate(provider.GetRequiredService<GitlabPipelineGenerator.Core.Templates.PythonProjectTemplate>());
+            templateService.RegisterTemplate(provider.GetRequiredService<GitlabPipelineGenerator.Core.Templates.JavaScriptProjectTemplate>());
+            return templateService;
+        });
 
         // Register GitLab API services
         services.AddTransient<IGitLabAuthenticationService, GitLabAuthenticationService>();

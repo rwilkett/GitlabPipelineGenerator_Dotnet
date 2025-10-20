@@ -202,11 +202,8 @@ public class ProjectAnalysisService : IProjectAnalysisService
             return new DependencyInfo { Confidence = AnalysisConfidence.Low };
         }
 
-        // Analyze the first package file found (in real implementation, analyze all)
-        var packageFile = packageFiles.First();
-        var content = await _gitLabProjectService.GetFileContentAsync(project.Id, packageFile.Path);
-        
-        return await _dependencyAnalyzer.AnalyzePackageFileAsync(packageFile.Name, content);
+        // Analyze package files based on metadata only (no content download)
+        return await _dependencyAnalyzer.AnalyzePackageFilesAsync(packageFiles.Select(f => f.Name).ToList());
     }
 
     private async Task<BuildConfiguration> BuildConfigurationFromAnalysisAsync(

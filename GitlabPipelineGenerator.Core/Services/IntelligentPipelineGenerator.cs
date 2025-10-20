@@ -8,7 +8,7 @@ namespace GitlabPipelineGenerator.Core.Services;
 /// <summary>
 /// Intelligent pipeline generator that uses project analysis results to generate optimized pipelines
 /// </summary>
-public class IntelligentPipelineGenerator : IPipelineGenerator
+public class IntelligentPipelineGenerator : IIntelligentPipelineGenerator
 {
     private readonly IPipelineGenerator _basePipelineGenerator;
     private readonly IAnalysisToPipelineMappingService _mappingService;
