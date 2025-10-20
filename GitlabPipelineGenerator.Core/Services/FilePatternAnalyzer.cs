@@ -237,13 +237,15 @@ public class FilePatternAnalyzer : IFilePatternAnalyzer
         // .NET build tools
         if (fileList.Any(f => f.Extension == ".csproj"))
         {
+            var dotnetVersion = await DetectDotNetVersionAsync(fileList);
             buildTools["dotnet"] = new BuildToolDetection
             {
                 Name = "dotnet",
                 BuildCommands = new[] { "dotnet build", "dotnet restore" },
                 TestCommands = new[] { "dotnet test" },
                 ConfigFiles = fileList.Where(f => f.Extension == ".csproj" || f.Name == "global.json").Select(f => f.Path).ToList(),
-                Weight = 10
+                Weight = 10,
+                Version = dotnetVersion
             };
         }
 
@@ -311,6 +313,7 @@ public class FilePatternAnalyzer : IFilePatternAnalyzer
         return new BuildToolInfo
         {
             Name = primaryTool.Name,
+            Version = primaryTool.Version,
             BuildCommands = primaryTool.BuildCommands.ToList(),
             TestCommands = primaryTool.TestCommands.ToList(),
             ConfigurationFiles = primaryTool.ConfigFiles.ToList(),
@@ -481,6 +484,62 @@ public class FilePatternAnalyzer : IFilePatternAnalyzer
         public string[]? FileTypes { get; set; }
     }
 
+    private async Task<string> DetectDotNetVersionAsync(List<GitLabRepositoryFile> files)
+    {
+        // Check global.json first
+        var globalJson = files.FirstOrDefault(f => f.Name == "global.json");
+        if (globalJson?.Content != null)
+        {
+            var sdkMatch = System.Text.RegularExpressions.Regex.Match(globalJson.Content, @"""version"":\s*""([^""]+)""");
+            if (sdkMatch.Success)
+            {
+                return sdkMatch.Groups[1].Value;
+            }
+        }
+
+        // Check .csproj files for TargetFramework
+        var csprojFiles = files.Where(f => f.Extension == ".csproj").ToList();
+        foreach (var csproj in csprojFiles)
+        {
+            if (!string.IsNullOrEmpty(csproj.Content))
+            {
+                var tfmMatch = System.Text.RegularExpressions.Regex.Match(csproj.Content, @"<TargetFramework>([^<]+)</TargetFramework>");
+                if (tfmMatch.Success)
+                {
+                    var tfm = tfmMatch.Groups[1].Value;
+                    return MapTargetFrameworkToVersion(tfm);
+                }
+
+                var tfmsMatch = System.Text.RegularExpressions.Regex.Match(csproj.Content, @"<TargetFrameworks>([^<]+)</TargetFrameworks>");
+                if (tfmsMatch.Success)
+                {
+                    var tfms = tfmsMatch.Groups[1].Value.Split(';').FirstOrDefault();
+                    return MapTargetFrameworkToVersion(tfms ?? "");
+                }
+            }
+        }
+
+        return "8.0"; // Default to .NET 8.0
+    }
+
+    private string MapTargetFrameworkToVersion(string targetFramework)
+    {
+        return targetFramework.ToLowerInvariant() switch
+        {
+            var tfm when tfm.StartsWith("net9") => "9.0",
+            var tfm when tfm.StartsWith("net8") => "8.0",
+            var tfm when tfm.StartsWith("net7") => "7.0",
+            var tfm when tfm.StartsWith("net6") => "6.0",
+            var tfm when tfm.StartsWith("net5") => "5.0",
+            var tfm when tfm.StartsWith("netcoreapp3") => "3.1",
+            var tfm when tfm.StartsWith("netcoreapp2") => "2.1",
+            var tfm when tfm.StartsWith("netstandard2.1") => "3.1",
+            var tfm when tfm.StartsWith("netstandard2.0") => "2.1",
+            var tfm when tfm.StartsWith("netframework") || tfm.StartsWith("net4") => "framework",
+            _ => "8.0"
+        };
+    }
+
     private class BuildToolDetection
     {
         public string Name { get; set; } = string.Empty;
@@ -488,6 +547,7 @@ public class FilePatternAnalyzer : IFilePatternAnalyzer
         public IEnumerable<string> TestCommands { get; set; } = Enumerable.Empty<string>();
         public IEnumerable<string> ConfigFiles { get; set; } = Enumerable.Empty<string>();
         public int Weight { get; set; }
+        public string Version { get; set; } = string.Empty;
     }
 
     private class TestFrameworkDetection

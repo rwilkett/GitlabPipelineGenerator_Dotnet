@@ -52,12 +52,12 @@ public class GitLabProjectService : IGitLabProjectService
 
                 return result;
             }
-            catch (GitLabApiException ex) when (ex.StatusCode == System.Net.HttpStatusCode.NotFound)
+            catch (GitlabPipelineGenerator.GitLabApiClient.GitLabApiException ex) when (ex.StatusCode == System.Net.HttpStatusCode.NotFound)
             {
                 _logger.LogWarning("Project not found: {ProjectIdentifier}", projectIdOrPath);
                 throw new ProjectNotFoundException(projectIdOrPath, $"Project '{projectIdOrPath}' was not found or you don't have access to it");
             }
-            catch (GitLabApiException ex) when (ex.StatusCode == System.Net.HttpStatusCode.Forbidden)
+            catch (GitlabPipelineGenerator.GitLabApiClient.GitLabApiException ex) when (ex.StatusCode == System.Net.HttpStatusCode.Forbidden)
             {
                 _logger.LogWarning("Access denied to project: {ProjectIdentifier}", projectIdOrPath);
                 throw new ProjectNotFoundException(projectIdOrPath, $"Access denied to project '{projectIdOrPath}'. You may not have sufficient permissions");
@@ -65,7 +65,7 @@ public class GitLabProjectService : IGitLabProjectService
             catch (Exception ex)
             {
                 _logger.LogError(ex, "Failed to retrieve project: {ProjectIdentifier}", projectIdOrPath);
-                throw new GitLabApiException($"Failed to retrieve project '{projectIdOrPath}': {ex.Message}", ex);
+                throw new Core.Exceptions.GitLabApiException($"Failed to retrieve project '{projectIdOrPath}': {ex.Message}", ex);
             }
         }, RetryPolicy.Default, TimeSpan.FromSeconds(30), cancellationToken);
     }
@@ -98,7 +98,7 @@ public class GitLabProjectService : IGitLabProjectService
         catch (Exception ex)
         {
             _logger.LogError(ex, "Failed to list projects");
-            throw new GitLabApiException($"Failed to list projects: {ex.Message}", ex);
+            throw new Core.Exceptions.GitLabApiException($"Failed to list projects: {ex.Message}", ex);
         }
     }
 
@@ -143,9 +143,8 @@ public class GitLabProjectService : IGitLabProjectService
             // Get project details which include permissions
             var project = await client.GetProjectAsync(projectId.ToString());
 
-            // Check ProjectAccess first, fall back to GroupAccess if ProjectAccess is null
-            var accessLevel = project.Permissions?.ProjectAccess?.AccessLevel ??
-                             project.Permissions?.GroupAccess?.AccessLevel ?? 0;
+            // Get access level from ProjectAccess
+            var accessLevel = project.Permissions?.ProjectAccess?.AccessLevel ?? 0;
 
             var permissions = new Core.Models.GitLab.ProjectPermissions
             {
@@ -168,7 +167,7 @@ public class GitLabProjectService : IGitLabProjectService
 
             return permissions;
         }
-        catch (GitLabApiException ex) when (ex.StatusCode == System.Net.HttpStatusCode.NotFound)
+        catch (GitlabPipelineGenerator.GitLabApiClient.GitLabApiException ex) when (ex.StatusCode == System.Net.HttpStatusCode.NotFound)
         {
             _logger.LogWarning("Project not found when getting permissions: {ProjectId}", projectId);
             throw new ProjectNotFoundException(projectId.ToString(), $"Project with ID '{projectId}' was not found or you don't have access to it");
@@ -176,7 +175,7 @@ public class GitLabProjectService : IGitLabProjectService
         catch (Exception ex)
         {
             _logger.LogError(ex, "Failed to get permissions for project: {ProjectId}", projectId);
-            throw new GitLabApiException($"Failed to get permissions for project '{projectId}': {ex.Message}", ex);
+            throw new Core.Exceptions.GitLabApiException($"Failed to get permissions for project '{projectId}': {ex.Message}", ex);
         }
     }
 
@@ -420,34 +419,47 @@ public class GitLabProjectService : IGitLabProjectService
     #endregion
 
     /// <inheritdoc />
-    public async Task<IEnumerable<GitLabRepositoryFile>> GetRepositoryFilesAsync(int projectId, string path = "", bool recursive = false, CancellationToken cancellationToken = default)
+    public async Task<IEnumerable<GitLabRepositoryFile>> GetRepositoryFilesAsync(int projectId, string path = "", bool recursive = false, int maxDepth = 3, CancellationToken cancellationToken = default)
     {
         var client = await GetAuthenticatedClientAsync();
 
         try
         {
-            _logger.LogDebug("Getting repository files for project {ProjectId}, path: {Path}, recursive: {Recursive}", projectId, path, recursive);
+            _logger.LogDebug("Getting repository files for project {ProjectId}, path: {Path}, recursive: {Recursive}, maxDepth: {MaxDepth}", projectId, path, recursive, maxDepth);
 
-            var repositoryFiles = await client.Files.GetAsync(projectId.ToString(), path);
+            var allFiles = new List<GitLabRepositoryFile>();
+            await GetFilesRecursivelyAsync(client, projectId.ToString(), path, allFiles, recursive, maxDepth);
 
-            var files = new List<GitLabRepositoryFile>
-            {
-                new GitLabRepositoryFile
-                {
-                    Name = repositoryFiles.Filename,
-                    Path = repositoryFiles.FullPath,
-                    Type = repositoryFiles.GetType().Name,
-                    Size = repositoryFiles.Size
-                }
-            };
-
-            _logger.LogDebug("Retrieved {Count} files from repository", files.Count);
-            return files;
+            _logger.LogDebug("Retrieved {Count} files from repository", allFiles.Count);
+            return allFiles;
         }
         catch (Exception ex)
         {
             _logger.LogError(ex, "Failed to get repository files for project: {ProjectId}", projectId);
-            throw new GitLabApiException($"Failed to get repository files for project '{projectId}': {ex.Message}", ex);
+            throw new Core.Exceptions.GitLabApiException($"Failed to get repository files for project '{projectId}': {ex.Message}", ex);
+        }
+    }
+
+    private async Task GetFilesRecursivelyAsync(GitlabPipelineGenerator.GitLabApiClient.GitLabClient client, string projectId, string path, List<GitLabRepositoryFile> allFiles, bool recursive, int maxDepth = 3, int currentDepth = 0)
+    {
+        var repositoryTree = await client.GetRepositoryTreeAsync(projectId, path);
+        
+        foreach (var item in repositoryTree)
+        {
+            if (item.Type == "blob")
+            {
+                allFiles.Add(new GitLabRepositoryFile
+                {
+                    Name = item.Name,
+                    Path = item.Path,
+                    Type = item.Type,
+                    Size = 0
+                });
+            }
+            else if (item.Type == "tree" && recursive && currentDepth < maxDepth)
+            {
+                await GetFilesRecursivelyAsync(client, projectId, item.Path, allFiles, recursive, maxDepth, currentDepth + 1);
+            }
         }
     }
 
@@ -460,8 +472,8 @@ public class GitLabProjectService : IGitLabProjectService
         {
             _logger.LogDebug("Getting file content for project {ProjectId}, file: {FilePath}, branch: {Branch}", projectId, filePath, branch);
 
-            var file = await client.Files.GetAsync(projectId.ToString(), filePath, branch ?? "HEAD");
-            var content = System.Text.Encoding.UTF8.GetString(Convert.FromBase64String(file.Content));
+            var file = await client.GetFileAsync(projectId.ToString(), filePath, branch);
+            var content = file.Content;
 
             _logger.LogDebug("Retrieved content for file {FilePath} ({Size} characters)", filePath, content.Length);
             return content;
@@ -469,7 +481,7 @@ public class GitLabProjectService : IGitLabProjectService
         catch (Exception ex)
         {
             _logger.LogError(ex, "Failed to get file content for project {ProjectId}, file: {FilePath}", projectId, filePath);
-            throw new GitLabApiException($"Failed to get file content for '{filePath}' in project '{projectId}': {ex.Message}", ex);
+            throw new Core.Exceptions.GitLabApiException($"Failed to get file content for '{filePath}' in project '{projectId}': {ex.Message}", ex);
         }
     }
 }

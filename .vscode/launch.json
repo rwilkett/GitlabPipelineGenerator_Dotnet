@@ -83,6 +83,19 @@
             "console": "integratedTerminal",
             "stopAtEntry": false,
             "preLaunchTask": "build-release"
+        },
+        {
+            "name": "Debug - Web Interface",
+            "type": "coreclr",
+            "request": "launch",
+            "program": "${workspaceFolder}/GitlabPipelineGenerator.Web/bin/Debug/net9.0/GitlabPipelineGenerator.Web.dll",
+            "args": [],
+            "cwd": "${workspaceFolder}/GitlabPipelineGenerator.Web",
+            "stopAtEntry": false,
+            "env": {
+                "ASPNETCORE_ENVIRONMENT": "Development"
+            },
+            "preLaunchTask": "build-web"
         }
     ],
     "inputs": [

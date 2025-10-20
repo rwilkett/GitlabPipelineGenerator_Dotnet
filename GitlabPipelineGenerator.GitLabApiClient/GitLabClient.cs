@@ -104,22 +104,37 @@ public class GitLabClient : IDisposable
         return file;
     }
 
+    public async Task<Group> GetGroupAsync(string groupId)
+    {
+        var response = await _httpClient.GetAsync($"{_baseUrl}/api/v4/groups/{groupId}");
+        
+        if (!response.IsSuccessStatusCode)
+        {
+            throw new GitLabApiException($"Failed to get group: {response.StatusCode}", response.StatusCode);
+        }
+
+        var json = await response.Content.ReadAsStringAsync();
+        return JsonSerializer.Deserialize<Group>(json, _jsonOptions) ?? throw new GitLabApiException("Failed to deserialize group");
+    }
+
+    public async Task<List<Project>> GetGroupProjectsAsync(string groupId, int perPage = 20, int page = 1)
+    {
+        var queryParams = new List<string> { $"per_page={perPage}", $"page={page}" };
+        var query = string.Join("&", queryParams);
+        var response = await _httpClient.GetAsync($"{_baseUrl}/api/v4/groups/{groupId}/projects?{query}");
+        
+        if (!response.IsSuccessStatusCode)
+        {
+            throw new GitLabApiException($"Failed to get group projects: {response.StatusCode}", response.StatusCode);
+        }
+
+        var json = await response.Content.ReadAsStringAsync();
+        return JsonSerializer.Deserialize<List<Project>>(json, _jsonOptions) ?? new List<Project>();
+    }
+
     public void Dispose()
     {
         _httpClient?.Dispose();
     }
 }
 
-public class GitLabApiException : Exception
-{
-    public System.Net.HttpStatusCode? StatusCode { get; }
-
-    public GitLabApiException(string message) : base(message) { }
-    
-    public GitLabApiException(string message, System.Net.HttpStatusCode statusCode) : base(message)
-    {
-        StatusCode = statusCode;
-    }
-    
-    public GitLabApiException(string message, Exception innerException) : base(message, innerException) { }
-}

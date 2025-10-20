@@ -69,9 +69,10 @@ public interface IGitLabProjectService
     /// <param name="projectId">Project ID</param>
     /// <param name="path">Path to retrieve files from (empty for root)</param>
     /// <param name="recursive">Whether to retrieve files recursively</param>
+    /// <param name="maxDepth">Maximum depth for recursive file discovery</param>
     /// <param name="cancellationToken">Cancellation token</param>
     /// <returns>Collection of repository files</returns>
-    Task<IEnumerable<GitLabRepositoryFile>> GetRepositoryFilesAsync(int projectId, string path = "", bool recursive = false, CancellationToken cancellationToken = default);
+    Task<IEnumerable<GitLabRepositoryFile>> GetRepositoryFilesAsync(int projectId, string path = "", bool recursive = false, int maxDepth = 3, CancellationToken cancellationToken = default);
 
     /// <summary>
     /// Gets content of a specific file

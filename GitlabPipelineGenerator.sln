@@ -11,6 +11,8 @@ Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "GitlabPipelineGenerator.Cor
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "GitlabPipelineGenerator.GitLabApiClient", "GitlabPipelineGenerator.GitLabApiClient\GitlabPipelineGenerator.GitLabApiClient.csproj", "{9054ECD9-ED6F-4F9E-9EE2-82F2F157244E}"
 EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "GitlabPipelineGenerator.Web", "GitlabPipelineGenerator.Web\GitlabPipelineGenerator.Web.csproj", "{99758258-FF80-4EFF-8C82-4BFAF7F08657}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -61,6 +63,18 @@ Global
 		{9054ECD9-ED6F-4F9E-9EE2-82F2F157244E}.Release|x64.Build.0 = Release|Any CPU
 		{9054ECD9-ED6F-4F9E-9EE2-82F2F157244E}.Release|x86.ActiveCfg = Release|Any CPU
 		{9054ECD9-ED6F-4F9E-9EE2-82F2F157244E}.Release|x86.Build.0 = Release|Any CPU
+		{99758258-FF80-4EFF-8C82-4BFAF7F08657}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{99758258-FF80-4EFF-8C82-4BFAF7F08657}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{99758258-FF80-4EFF-8C82-4BFAF7F08657}.Debug|x64.ActiveCfg = Debug|Any CPU
+		{99758258-FF80-4EFF-8C82-4BFAF7F08657}.Debug|x64.Build.0 = Debug|Any CPU
+		{99758258-FF80-4EFF-8C82-4BFAF7F08657}.Debug|x86.ActiveCfg = Debug|Any CPU
+		{99758258-FF80-4EFF-8C82-4BFAF7F08657}.Debug|x86.Build.0 = Debug|Any CPU
+		{99758258-FF80-4EFF-8C82-4BFAF7F08657}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{99758258-FF80-4EFF-8C82-4BFAF7F08657}.Release|Any CPU.Build.0 = Release|Any CPU
+		{99758258-FF80-4EFF-8C82-4BFAF7F08657}.Release|x64.ActiveCfg = Release|Any CPU
+		{99758258-FF80-4EFF-8C82-4BFAF7F08657}.Release|x64.Build.0 = Release|Any CPU
+		{99758258-FF80-4EFF-8C82-4BFAF7F08657}.Release|x86.ActiveCfg = Release|Any CPU
+		{99758258-FF80-4EFF-8C82-4BFAF7F08657}.Release|x86.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE

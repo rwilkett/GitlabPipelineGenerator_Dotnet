@@ -1,0 +1,36 @@
+@model GitlabPipelineGenerator.Web.Models.ProjectListModel
+@{
+    Layout = "_Layout";
+}
+
+<h1>Projects in Group: @Model.GroupName (@Model.GroupId)</h1>
+
+<p><a href="/">← Back to Connection</a></p>
+
+@if (Model.Projects.Any())
+{
+    <div class="project-list">
+        @foreach (var project in Model.Projects)
+        {
+            <div class="project-item">
+                <h3>@project.Name</h3>
+                <p><strong>Path:</strong> @project.FullPath</p>
+                @if (!string.IsNullOrEmpty(project.Description))
+                {
+                    <p><strong>Description:</strong> @project.Description</p>
+                }
+                <p><strong>URL:</strong> <a href="@project.WebUrl" target="_blank">@project.WebUrl</a></p>
+                
+                <form method="post" action="/Home/Analyze" style="display: inline;">
+                    <input type="hidden" name="token" value="@Model.Token" />
+                    <input type="hidden" name="projectPath" value="@project.FullPath" />
+                    <button type="submit" class="analyze-btn">Analyze Project</button>
+                </form>
+            </div>
+        }
+    </div>
+}
+else
+{
+    <p>No projects found in group "@Model.GroupName" (ID: @Model.GroupId). Make sure the group ID is correct and you have access to its projects.</p>
+}

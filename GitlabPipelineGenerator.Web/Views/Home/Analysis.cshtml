@@ -1,0 +1,69 @@
+@model GitlabPipelineGenerator.Web.Models.AnalysisResultModel
+@{
+    Layout = "_Layout";
+}
+
+<h1>Analysis Results</h1>
+
+<p><a href="javascript:history.back()">← Back to Projects</a></p>
+
+@if (Model.Success)
+{
+    <h2>Project: @Model.ProjectName</h2>
+    
+    <div style="margin-bottom: 30px;">
+        <h3>Detected Configuration</h3>
+        <p><strong>Project Type:</strong> @Model.DetectedType</p>
+        <p><strong>Framework:</strong> @Model.Framework</p>
+        <p><strong>Build Tool:</strong> @Model.BuildTool</p>
+        @if (!string.IsNullOrEmpty(Model.Version))
+        {
+            <p><strong>Version:</strong> @Model.Version</p>
+        }
+        
+        @if (Model.BuildCommands.Any())
+        {
+            <p><strong>Build Commands:</strong></p>
+            <ul>
+                @foreach (var cmd in Model.BuildCommands)
+                {
+                    <li><code>@cmd</code></li>
+                }
+            </ul>
+        }
+        
+        @if (Model.TestCommands.Any())
+        {
+            <p><strong>Test Commands:</strong></p>
+            <ul>
+                @foreach (var cmd in Model.TestCommands)
+                {
+                    <li><code>@cmd</code></li>
+                }
+            </ul>
+        }
+    </div>
+    
+    <h3>Generated GitLab CI/CD Pipeline</h3>
+    <div class="yaml-output">@Model.YamlContent</div>
+    
+    <div style="margin-top: 20px;">
+        <button onclick="copyToClipboard()">Copy YAML to Clipboard</button>
+    </div>
+}
+else
+{
+    <div class="error">
+        <h3>Analysis Failed</h3>
+        <p>@Model.ErrorMessage</p>
+    </div>
+}
+
+<script>
+function copyToClipboard() {
+    const yamlContent = document.querySelector('.yaml-output').textContent;
+    navigator.clipboard.writeText(yamlContent).then(() => {
+        alert('YAML copied to clipboard!');
+    });
+}
+</script>

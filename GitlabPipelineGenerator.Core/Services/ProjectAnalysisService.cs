@@ -175,7 +175,7 @@ public class ProjectAnalysisService : IProjectAnalysisService
 
     private async Task<List<GitLabRepositoryFile>> GetProjectFilesAsync(GitLabProject project, AnalysisOptions options)
     {
-        var files = (await _gitLabProjectService.GetRepositoryFilesAsync(project.Id, "", recursive: true)).ToList();
+        var files = (await _gitLabProjectService.GetRepositoryFilesAsync(project.Id, "", recursive: true, maxDepth: options.MaxFileAnalysisDepth)).ToList();
 
         // Filter files based on analysis options
         if (!options.AnalyzeFiles)
@@ -188,12 +188,6 @@ public class ProjectAnalysisService : IProjectAnalysisService
         {
             files = files.Where(f => !options.ExcludePatterns.Any(pattern => 
                 f.Path.Contains(pattern, StringComparison.OrdinalIgnoreCase))).ToList();
-        }
-
-        // Limit analysis depth
-        if (options.MaxFileAnalysisDepth > 0)
-        {
-            files = files.Where(f => f.Path.Split('/').Length <= options.MaxFileAnalysisDepth).ToList();
         }
 
         return files;
@@ -228,6 +222,13 @@ public class ProjectAnalysisService : IProjectAnalysisService
             Confidence = CombineConfidence(buildToolInfo.Confidence, testFrameworkInfo.Confidence)
         };
 
+        // Add version-specific configuration for .NET
+        if (buildToolInfo.Name.ToLowerInvariant() == "dotnet" && !string.IsNullOrEmpty(buildToolInfo.Version))
+        {
+            buildConfig.Settings["DotNetVersion"] = buildToolInfo.Version;
+            buildConfig.Settings["DockerImage"] = GetDotNetDockerImage(buildToolInfo.Version);
+        }
+
         // Add common artifact paths based on build tool
         switch (buildToolInfo.Name.ToLowerInvariant())
         {
@@ -250,6 +251,22 @@ public class ProjectAnalysisService : IProjectAnalysisService
         }
 
         return buildConfig;
+    }
+
+    private string GetDotNetDockerImage(string version)
+    {
+        return version switch
+        {
+            "9.0" => "mcr.microsoft.com/dotnet/sdk:9.0",
+            "8.0" => "mcr.microsoft.com/dotnet/sdk:8.0",
+            "7.0" => "mcr.microsoft.com/dotnet/sdk:7.0",
+            "6.0" => "mcr.microsoft.com/dotnet/sdk:6.0",
+            "5.0" => "mcr.microsoft.com/dotnet/sdk:5.0",
+            "3.1" => "mcr.microsoft.com/dotnet/sdk:3.1",
+            "2.1" => "mcr.microsoft.com/dotnet/sdk:2.1",
+            "framework" => "mcr.microsoft.com/dotnet/framework/sdk:4.8",
+            _ => "mcr.microsoft.com/dotnet/sdk:8.0"
+        };
     }
 
     private AnalysisConfidence CalculateOverallConfidence(ProjectAnalysisResult result)

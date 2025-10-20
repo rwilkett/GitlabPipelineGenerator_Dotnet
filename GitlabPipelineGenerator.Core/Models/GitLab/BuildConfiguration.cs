@@ -79,6 +79,11 @@ public class BuildConfiguration
     /// Build configuration confidence
     /// </summary>
     public AnalysisConfidence Confidence { get; set; } = AnalysisConfidence.Medium;
+
+    /// <summary>
+    /// Additional build settings
+    /// </summary>
+    public Dictionary<string, string> Settings { get; set; } = new();
 }
 
 /// <summary>

@@ -33,10 +33,7 @@ public class GitLabConnectionValidator
             try
             {
                 // Try a simple API call to test authentication
-                var projects = await client.Projects.GetAsync(options => 
-                {
-                    options.Simple = true;
-                });
+                var projects = await client.GetProjectsAsync(owned: true, perPage: 1);
                 
                 result.CanAuthenticate = true;
                 result.UserInfo = new GitLabUserInfo
@@ -61,7 +58,7 @@ public class GitLabConnectionValidator
             {
                 try
                 {
-                    var projects = await client.Projects.GetAsync(options => options.Simple = true);
+                    var projects = await client.GetProjectsAsync(perPage: 10);
                     result.CanAccessProjects = true;
                     result.ProjectCount = projects.Count();
                     _logger.LogInformation("Project access test passed. Found {Count} projects", result.ProjectCount);
