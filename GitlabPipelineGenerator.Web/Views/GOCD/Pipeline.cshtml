@@ -1,0 +1,123 @@
+@model GitlabPipelineGenerator.Web.Models.PipelineConfigModel
+
+@{
+    ViewData["Title"] = $"Pipeline: {Model.Name}";
+}
+
+<h2>Pipeline Configuration: @Model.Name</h2>
+
+<div class="row">
+    <div class="col-md-6">
+        <div class="card">
+            <div class="card-header">
+                <h5>Basic Information</h5>
+            </div>
+            <div class="card-body">
+                <p><strong>Name:</strong> @Model.Name</p>
+                @if (!string.IsNullOrEmpty(Model.Template))
+                {
+                    <p><strong>Template:</strong> @Model.Template</p>
+                }
+            </div>
+        </div>
+    </div>
+</div>
+
+@if (Model.EnvironmentVariables.Any())
+{
+    <div class="card mt-3">
+        <div class="card-header">
+            <h5>Environment Variables</h5>
+        </div>
+        <div class="card-body">
+            <table class="table table-sm">
+                <thead>
+                    <tr>
+                        <th>Name</th>
+                        <th>Value</th>
+                        <th>Secure</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @foreach (var env in Model.EnvironmentVariables)
+                    {
+                        <tr>
+                            <td>@env.Name</td>
+                            <td>@(env.Secure ? "***" : env.Value)</td>
+                            <td>@(env.Secure ? "Yes" : "No")</td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        </div>
+    </div>
+}
+
+@if (Model.Materials.Any())
+{
+    <div class="card mt-3">
+        <div class="card-header">
+            <h5>Materials</h5>
+        </div>
+        <div class="card-body">
+            <table class="table table-sm">
+                <thead>
+                    <tr>
+                        <th>Type</th>
+                        <th>URL</th>
+                        <th>Branch</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @foreach (var material in Model.Materials)
+                    {
+                        <tr>
+                            <td>@material.Type</td>
+                            <td>@material.Url</td>
+                            <td>@(material.Branch ?? "default")</td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        </div>
+    </div>
+}
+
+@if (Model.Stages.Any())
+{
+    <div class="card mt-3">
+        <div class="card-header">
+            <h5>Stages</h5>
+        </div>
+        <div class="card-body">
+            @foreach (var stage in Model.Stages)
+            {
+                <div class="mb-3">
+                    <h6>@stage.Name</h6>
+                    @if (stage.Jobs.Any())
+                    {
+                        <ul class="list-group list-group-flush">
+                            @foreach (var job in stage.Jobs)
+                            {
+                                <li class="list-group-item">
+                                    <strong>Job:</strong> @job.Name
+                                    @if (job.Tasks.Any())
+                                    {
+                                        <ul class="mt-2">
+                                            @foreach (var task in job.Tasks)
+                                            {
+                                                <li>@task.Type: @task.Command</li>
+                                            }
+                                        </ul>
+                                    }
+                                </li>
+                            }
+                        </ul>
+                    }
+                </div>
+            }
+        </div>
+    </div>
+}
+
+<a href="javascript:history.back()" class="btn btn-secondary mt-3">Back</a>

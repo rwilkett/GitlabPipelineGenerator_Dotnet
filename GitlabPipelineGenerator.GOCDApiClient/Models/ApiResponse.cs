@@ -18,6 +18,9 @@ public class EmbeddedData<T>
 
     [JsonPropertyName("templates")]
     public List<T>? Templates { get; set; }
+
+    [JsonPropertyName("groups")]
+    public List<T>? Groups { get; set; }
 }
 
 public class Link
@@ -42,4 +45,16 @@ public class TemplateEmbedded
 {
     [JsonPropertyName("templates")]
     public List<Template> Templates { get; set; } = new();
+}
+
+public class PipelineGroupList
+{
+    [JsonPropertyName("_embedded")]
+    public PipelineGroupEmbedded? Embedded { get; set; }
+}
+
+public class PipelineGroupEmbedded
+{
+    [JsonPropertyName("groups")]
+    public List<PipelineGroup> Groups { get; set; } = new();
 }

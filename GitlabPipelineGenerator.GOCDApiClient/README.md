@@ -34,3 +34,14 @@ var history = await client.GetPipelineHistoryAsync("pipeline-name");
 var templates = await client.GetTemplatesAsync();
 var template = await client.GetTemplateAsync("template-name");
 ```
+
+### Get Pipeline Groups
+```csharp
+var groups = await client.GetPipelineGroupsAsync();
+var group = await client.GetPipelineGroupAsync("group-name");
+```
+
+### Get Pipeline Configuration
+```csharp
+var config = await client.GetPipelineConfigAsync("pipeline-name");
+```

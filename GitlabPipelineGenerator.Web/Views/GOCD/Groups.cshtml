@@ -1,0 +1,33 @@
+@model List<GitlabPipelineGenerator.GOCDApiClient.Models.PipelineGroup>
+
+@{
+    ViewData["Title"] = "Pipeline Groups";
+}
+
+<h2>Pipeline Groups</h2>
+
+@if (Model.Any())
+{
+    <div class="row">
+        @foreach (var group in Model)
+        {
+            <div class="col-md-4 mb-3">
+                <div class="card">
+                    <div class="card-header">
+                        <h5>@group.Name</h5>
+                    </div>
+                    <div class="card-body">
+                        <p>@group.Pipelines.Count pipeline(s)</p>
+                        <a asp-action="Group" asp-route-groupName="@group.Name" class="btn btn-primary">View Pipelines</a>
+                    </div>
+                </div>
+            </div>
+        }
+    </div>
+}
+else
+{
+    <p>No pipeline groups found.</p>
+}
+
+<a asp-action="Index" class="btn btn-secondary">Back to Connection</a>

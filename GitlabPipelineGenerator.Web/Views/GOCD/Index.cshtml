@@ -1,0 +1,80 @@
+@model GitlabPipelineGenerator.Web.Models.GOCDConnectionModel
+
+@{
+    ViewData["Title"] = "Connect to GOCD";
+}
+
+<h2>Connect to GOCD Server</h2>
+
+<form asp-controller="GOCD" asp-action="Connect" method="post">
+    <div class="form-group">
+        <label asp-for="ServerUrl"></label>
+        <input asp-for="ServerUrl" class="form-control" placeholder="https://your-gocd-server.com" />
+        <span asp-validation-for="ServerUrl" class="text-danger"></span>
+    </div>
+
+    <div class="form-group">
+        <label asp-for="AuthMethod"></label>
+        <select asp-for="AuthMethod" class="form-control" onchange="toggleAuth()">
+            <option value="token">Bearer Token</option>
+            <option value="basic">Username/Password</option>
+        </select>
+    </div>
+
+    <div id="tokenAuth" class="form-group">
+        <label asp-for="BearerToken"></label>
+        <input asp-for="BearerToken" class="form-control" />
+        <span asp-validation-for="BearerToken" class="text-danger"></span>
+    </div>
+
+    <div id="basicAuth" style="display: none;">
+        <div class="form-group">
+            <label asp-for="Username"></label>
+            <input asp-for="Username" class="form-control" />
+            <span asp-validation-for="Username" class="text-danger"></span>
+        </div>
+        <div class="form-group">
+            <label asp-for="Password"></label>
+            <input asp-for="Password" class="form-control" />
+            <span asp-validation-for="Password" class="text-danger"></span>
+        </div>
+    </div>
+
+    <button type="submit" class="btn btn-primary">Connect</button>
+</form>
+
+@if (ViewData.ModelState.ErrorCount > 0)
+{
+    <div class="alert alert-danger">
+        @foreach (var error in ViewData.ModelState.Values.SelectMany(v => v.Errors))
+        {
+            <p>@error.ErrorMessage</p>
+        }
+    </div>
+}
+
+<script>
+function toggleAuth() {
+    const authMethodSelect = document.querySelector('[name="AuthMethod"]');
+    if (!authMethodSelect) return;
+    
+    const authMethod = authMethodSelect.value;
+    const tokenAuth = document.getElementById('tokenAuth');
+    const basicAuth = document.getElementById('basicAuth');
+    
+    if (tokenAuth && basicAuth) {
+        if (authMethod === 'token') {
+            tokenAuth.style.display = 'block';
+            basicAuth.style.display = 'none';
+        } else {
+            tokenAuth.style.display = 'none';
+            basicAuth.style.display = 'block';
+        }
+    }
+}
+
+// Initialize on page load
+document.addEventListener('DOMContentLoaded', function() {
+    toggleAuth();
+});
+</script>

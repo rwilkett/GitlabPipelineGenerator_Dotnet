@@ -9,6 +9,7 @@
   <ItemGroup>
     <ProjectReference Include="..\GitlabPipelineGenerator.Core\GitlabPipelineGenerator.Core.csproj" />
     <ProjectReference Include="..\GitlabPipelineGenerator.GitLabApiClient\GitlabPipelineGenerator.GitLabApiClient.csproj" />
+    <ProjectReference Include="..\GitlabPipelineGenerator.GOCDApiClient\GitlabPipelineGenerator.GOCDApiClient.csproj" />
   </ItemGroup>
 
 </Project>
