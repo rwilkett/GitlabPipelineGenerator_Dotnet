@@ -66,88 +66,93 @@
 }
 else
 {
-    <h3>Pipeline Groups</h3>
-    
-    @if (groups.Any())
-    {
-        <div class="row">
-            @foreach (var group in groups)
-            {
-                <div class="col-md-4 mb-3">
-                    <div class="card">
-                        <div class="card-header">
-                            <h5>@group.Name</h5>
-                        </div>
-                        <div class="card-body">
-                            <p>@group.Pipelines.Count pipeline(s)</p>
-                            <button class="btn btn-primary" @onclick="() => LoadGroup(group.Name)">View Pipelines</button>
-                        </div>
-                    </div>
-                </div>
-            }
-        </div>
-    }
-    else
-    {
-        <p>No pipeline groups found.</p>
-    }
-
-    <button class="btn btn-secondary" @onclick="Disconnect">Back to Connection</button>
-}
-
-@if (selectedGroup != null)
-{
-    <div class="mt-4">
-        <h3>Pipeline Group: @selectedGroup.Name</h3>
-        
-        @if (selectedGroup.Pipelines.Any())
+    <ul class="nav nav-tabs" role="tablist">
+        <li class="nav-item" role="presentation">
+            <button class="nav-link @(selectedGroup == null && selectedPipeline == null ? "active" : "")" @onclick="BackToGroups">Groups</button>
+        </li>
+        @if (selectedGroup != null)
         {
-            <div class="table-responsive">
-                <table class="table table-striped">
-                    <thead>
-                        <tr>
-                            <th>Pipeline Name</th>
-                            <th>Status</th>
-                            <th>Actions</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        @foreach (var pipeline in selectedGroup.Pipelines)
+            <li class="nav-item" role="presentation">
+                <button class="nav-link @(selectedGroup != null && selectedPipeline == null ? "active" : "")" @onclick="BackToGroup">@selectedGroup.Name Pipelines</button>
+            </li>
+        }
+        @if (selectedPipeline != null)
+        {
+            <li class="nav-item" role="presentation">
+                <button class="nav-link active">@selectedPipeline.Name Config</button>
+            </li>
+        }
+    </ul>
+    
+    <div class="tab-content mt-3">
+        @if (selectedGroup == null && selectedPipeline == null)
+        {
+            <div class="tab-pane fade show active">
+                <h4>Pipeline Groups</h4>
+                @if (groups.Any())
+                {
+                    <div class="list-group mb-3">
+                        @foreach (var group in groups)
                         {
-                            <tr>
-                                <td>@pipeline.Name</td>
-                                <td>
-                                    @if (pipeline.Locked)
-                                    {
-                                        <span class="badge bg-warning">Locked</span>
-                                    }
-                                    @if (pipeline.PauseInfo?.Paused == true)
-                                    {
-                                        <span class="badge bg-secondary">Paused</span>
-                                    }
-                                </td>
-                                <td>
-                                    <button class="btn btn-sm btn-primary" @onclick="() => LoadPipeline(pipeline.Name)">View Config</button>
-                                </td>
-                            </tr>
+                            <button class="list-group-item list-group-item-action d-flex justify-content-between align-items-center" 
+                                    @onclick="() => LoadGroup(group.Name)">
+                                <div>
+                                    <h6 class="mb-1">@group.Name</h6>
+                                    <small class="text-muted">@group.Pipelines.Count pipeline(s)</small>
+                                </div>
+                                <span class="badge bg-primary rounded-pill">@group.Pipelines.Count</span>
+                            </button>
                         }
-                    </tbody>
-                </table>
+                    </div>
+                }
+                else
+                {
+                    <p>No pipeline groups found.</p>
+                }
+                <button class="btn btn-secondary" @onclick="Disconnect">Back to Connection</button>
             </div>
         }
-        else
+
+        @if (selectedGroup != null && selectedPipeline == null)
         {
-            <p>No pipelines found in this group.</p>
+            <div class="tab-pane fade show active">
+                <h4>@selectedGroup.Name Pipelines</h4>
+                @if (selectedGroup.Pipelines.Any())
+                {
+                    <div class="list-group">
+                        @foreach (var pipeline in selectedGroup.Pipelines)
+                        {
+                            <button class="list-group-item list-group-item-action d-flex justify-content-between align-items-center"
+                                    @onclick="() => LoadPipeline(pipeline.Name)">
+                                <div>
+                                    <h6 class="mb-1">@pipeline.Name</h6>
+                                    <div>
+                                        @if (pipeline.Locked)
+                                        {
+                                            <span class="badge bg-warning me-1">Locked</span>
+                                        }
+                                        @if (pipeline.PauseInfo?.Paused == true)
+                                        {
+                                            <span class="badge bg-secondary">Paused</span>
+                                        }
+                                    </div>
+                                </div>
+                                <i class="bi bi-chevron-right"></i>
+                            </button>
+                        }
+                    </div>
+                }
+                else
+                {
+                    <p>No pipelines found in this group.</p>
+                }
+            </div>
         }
 
-        <button class="btn btn-secondary" @onclick="BackToGroups">Back to Groups</button>
-    </div>
-}
-
-@if (selectedPipeline != null)
-{
-    <div class="mt-4">
-        <h3>Pipeline Configuration: @selectedPipeline.Name</h3>
+        @if (selectedPipeline != null)
+        {
+            <div class="tab-pane fade show active">
+                <h4>Pipeline Configuration: @selectedPipeline.Name</h4>
         
         @if (!string.IsNullOrEmpty(selectedPipeline.Template))
         {
@@ -233,7 +238,8 @@ else
             }
         }
 
-        <button class="btn btn-secondary" @onclick="BackToGroup">Back to Group</button>
+            </div>
+        }
     </div>
 }
 
