@@ -1,0 +1,149 @@
+@page "/settings"
+@using GitlabPipelineGenerator.Web.Models
+@inject IJSRuntime JSRuntime
+
+<PageTitle>Settings</PageTitle>
+
+<h2>Connection Settings</h2>
+
+<div class="row">
+    <div class="col-md-6">
+        <div class="card">
+            <div class="card-header">
+                <h4>GitLab Connection</h4>
+            </div>
+            <div class="card-body">
+                <EditForm Model="gitlabSettings" OnValidSubmit="SaveGitLabSettings">
+                    <div class="form-group mb-3">
+                        <label for="gitlabUrl">GitLab Server URL:</label>
+                        <InputText id="gitlabUrl" class="form-control" @bind-Value="gitlabSettings.ServerUrl" placeholder="https://gitlab.com" />
+                    </div>
+                    <div class="form-group mb-3">
+                        <label for="gitlabToken">Personal Access Token:</label>
+                        <InputText id="gitlabToken" type="password" class="form-control" @bind-Value="gitlabSettings.Token" />
+                        <small class="form-text text-muted">Token with 'read_api' and 'read_repository' scopes</small>
+                    </div>
+                    <button type="submit" class="btn btn-primary">Save GitLab Settings</button>
+                </EditForm>
+            </div>
+        </div>
+    </div>
+    
+    <div class="col-md-6">
+        <div class="card">
+            <div class="card-header">
+                <h4>GOCD Connection</h4>
+            </div>
+            <div class="card-body">
+                <EditForm Model="gocdSettings" OnValidSubmit="SaveGOCDSettings">
+                    <div class="form-group mb-3">
+                        <label for="gocdUrl">GOCD Server URL:</label>
+                        <InputText id="gocdUrl" class="form-control" @bind-Value="gocdSettings.ServerUrl" placeholder="https://your-gocd-server.com" />
+                    </div>
+                    <div class="form-group mb-3">
+                        <label for="authMethod">Authentication Method:</label>
+                        <InputSelect id="authMethod" class="form-control" @bind-Value="gocdSettings.AuthMethod">
+                            <option value="token">Bearer Token</option>
+                            <option value="basic">Username/Password</option>
+                        </InputSelect>
+                    </div>
+                    @if (gocdSettings.AuthMethod == "token")
+                    {
+                        <div class="form-group mb-3">
+                            <label for="gocdToken">Bearer Token:</label>
+                            <InputText id="gocdToken" type="password" class="form-control" @bind-Value="gocdSettings.BearerToken" />
+                        </div>
+                    }
+                    else
+                    {
+                        <div class="form-group mb-3">
+                            <label for="gocdUsername">Username:</label>
+                            <InputText id="gocdUsername" class="form-control" @bind-Value="gocdSettings.Username" />
+                        </div>
+                        <div class="form-group mb-3">
+                            <label for="gocdPassword">Password:</label>
+                            <InputText id="gocdPassword" type="password" class="form-control" @bind-Value="gocdSettings.Password" />
+                        </div>
+                    }
+                    <button type="submit" class="btn btn-primary">Save GOCD Settings</button>
+                </EditForm>
+            </div>
+        </div>
+    </div>
+</div>
+
+@if (!string.IsNullOrEmpty(successMessage))
+{
+    <div class="alert alert-success mt-3">@successMessage</div>
+}
+
+@if (!string.IsNullOrEmpty(errorMessage))
+{
+    <div class="alert alert-danger mt-3">@errorMessage</div>
+}
+
+@code {
+    private GitLabConnectionModel gitlabSettings = new();
+    private GOCDConnectionModel gocdSettings = new();
+    private string? successMessage;
+    private string? errorMessage;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadSettings();
+    }
+
+    private async Task LoadSettings()
+    {
+        try
+        {
+            var gitlabJson = await JSRuntime.InvokeAsync<string>("localStorage.getItem", "gitlab-settings");
+            if (!string.IsNullOrEmpty(gitlabJson))
+            {
+                gitlabSettings = System.Text.Json.JsonSerializer.Deserialize<GitLabConnectionModel>(gitlabJson) ?? new();
+            }
+
+            var gocdJson = await JSRuntime.InvokeAsync<string>("localStorage.getItem", "gocd-settings");
+            if (!string.IsNullOrEmpty(gocdJson))
+            {
+                gocdSettings = System.Text.Json.JsonSerializer.Deserialize<GOCDConnectionModel>(gocdJson) ?? new();
+            }
+        }
+        catch (Exception ex)
+        {
+            errorMessage = $"Error loading settings: {ex.Message}";
+        }
+    }
+
+    private async Task SaveGitLabSettings()
+    {
+        try
+        {
+            var json = System.Text.Json.JsonSerializer.Serialize(gitlabSettings);
+            await JSRuntime.InvokeVoidAsync("localStorage.setItem", "gitlab-settings", json);
+            successMessage = "GitLab settings saved successfully!";
+            errorMessage = null;
+        }
+        catch (Exception ex)
+        {
+            errorMessage = $"Error saving GitLab settings: {ex.Message}";
+            successMessage = null;
+        }
+    }
+
+    private async Task SaveGOCDSettings()
+    {
+        try
+        {
+            var json = System.Text.Json.JsonSerializer.Serialize(gocdSettings);
+            await JSRuntime.InvokeVoidAsync("localStorage.setItem", "gocd-settings", json);
+            successMessage = "GOCD settings saved successfully!";
+            errorMessage = null;
+        }
+        catch (Exception ex)
+        {
+            errorMessage = $"Error saving GOCD settings: {ex.Message}";
+            successMessage = null;
+        }
+    }
+}

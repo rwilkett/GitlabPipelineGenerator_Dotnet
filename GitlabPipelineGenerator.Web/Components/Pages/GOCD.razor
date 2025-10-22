@@ -450,6 +450,35 @@ else
         selectedTemplate = null;
     }
 
+    protected override async System.Threading.Tasks.Task OnInitializedAsync()
+    {
+        await LoadSavedSettings();
+    }
+    
+    private async System.Threading.Tasks.Task LoadSavedSettings()
+    {
+        try
+        {
+            var json = await JSRuntime.InvokeAsync<string>("localStorage.getItem", "gocd-settings");
+            if (!string.IsNullOrEmpty(json))
+            {
+                var saved = System.Text.Json.JsonSerializer.Deserialize<GOCDConnectionModel>(json);
+                if (saved != null)
+                {
+                    connectionModel.ServerUrl = saved.ServerUrl;
+                    connectionModel.AuthMethod = saved.AuthMethod;
+                    connectionModel.BearerToken = saved.BearerToken;
+                    connectionModel.Username = saved.Username;
+                    connectionModel.Password = saved.Password;
+                }
+            }
+        }
+        catch
+        {
+            // Ignore errors loading settings
+        }
+    }
+
     public void Dispose()
     {
         client?.Dispose();

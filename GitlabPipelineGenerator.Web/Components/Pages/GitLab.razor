@@ -593,6 +593,32 @@ else if (analysisResult != null)
         analysisResult = null;
     }
 
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadSavedSettings();
+    }
+    
+    private async Task LoadSavedSettings()
+    {
+        try
+        {
+            var json = await JSRuntime.InvokeAsync<string>("localStorage.getItem", "gitlab-settings");
+            if (!string.IsNullOrEmpty(json))
+            {
+                var saved = System.Text.Json.JsonSerializer.Deserialize<GitLabConnectionModel>(json);
+                if (saved != null)
+                {
+                    connectionModel.ServerUrl = saved.ServerUrl;
+                    connectionModel.Token = saved.Token;
+                }
+            }
+        }
+        catch
+        {
+            // Ignore errors loading settings
+        }
+    }
+
     private async System.Threading.Tasks.Task CopyToClipboard()
     {
         if (analysisResult?.YamlContent != null)
