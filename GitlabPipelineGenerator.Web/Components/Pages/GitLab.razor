@@ -1,0 +1,275 @@
+@page "/gitlab"
+@using GitlabPipelineGenerator.Web.Models
+@using GitlabPipelineGenerator.Core.Interfaces
+@using GitlabPipelineGenerator.Core.Models.GitLab
+@inject IGitLabProjectService GitLabProjectService
+@inject IProjectAnalysisService ProjectAnalysisService
+@inject IIntelligentPipelineGenerator PipelineGenerator
+@inject IJSRuntime JSRuntime
+
+<PageTitle>GitLab Pipeline Generator</PageTitle>
+
+<h1>GitLab Pipeline Generator</h1>
+
+@if (projects == null && analysisResult == null)
+{
+    <EditForm Model="connectionModel" OnValidSubmit="HandleConnect">
+        <DataAnnotationsValidator />
+        <ValidationSummary />
+
+        <div class="form-group mb-3">
+            <label for="token">GitLab Personal Access Token:</label>
+            <InputText id="token" type="password" class="form-control" @bind-Value="connectionModel.Token" />
+            <small class="form-text text-muted">Create a token at GitLab → User Settings → Access Tokens with 'read_api' and 'read_repository' scopes</small>
+        </div>
+
+        <div class="form-group mb-3">
+            <label for="groupId">Group ID:</label>
+            <InputText id="groupId" class="form-control" @bind-Value="connectionModel.GroupId" placeholder="e.g., 12345" />
+            <small class="form-text text-muted">Enter the GitLab group ID (numeric) to list projects from</small>
+        </div>
+
+        <button type="submit" class="btn btn-primary" disabled="@isConnecting">
+            @if (isConnecting)
+            {
+                <span class="spinner-border spinner-border-sm" role="status"></span>
+                <span>Connecting...</span>
+            }
+            else
+            {
+                <span>Connect to GitLab</span>
+            }
+        </button>
+    </EditForm>
+
+    @if (!string.IsNullOrEmpty(errorMessage))
+    {
+        <div class="alert alert-danger mt-3">@errorMessage</div>
+    }
+}
+else if (projects != null && analysisResult == null)
+{
+    <h2>Projects in Group: @groupName (@connectionModel.GroupId)</h2>
+    
+    <button class="btn btn-secondary mb-3" @onclick="BackToConnection">← Back to Connection</button>
+
+    @if (projects.Any())
+    {
+        <div class="row">
+            @foreach (var project in projects)
+            {
+                <div class="col-md-6 mb-3">
+                    <div class="card">
+                        <div class="card-body">
+                            <h5 class="card-title">@project.Name</h5>
+                            <p class="card-text">
+                                <strong>Path:</strong> @project.FullPath<br>
+                                @if (!string.IsNullOrEmpty(project.Description))
+                                {
+                                    <strong>Description:</strong> @project.Description<br>
+                                }
+                                <strong>URL:</strong> <a href="@project.WebUrl" target="_blank">@project.WebUrl</a>
+                            </p>
+                            <button class="btn btn-primary" @onclick="() => AnalyzeProject(project.FullPath, project.Name)" disabled="@isAnalyzing">
+                                @if (isAnalyzing && analyzingProject == project.FullPath)
+                                {
+                                    <span class="spinner-border spinner-border-sm" role="status"></span>
+                                    <span>Analyzing...</span>
+                                }
+                                else
+                                {
+                                    <span>Analyze Project</span>
+                                }
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            }
+        </div>
+    }
+    else
+    {
+        <p>No projects found in group "@groupName" (ID: @connectionModel.GroupId). Make sure the group ID is correct and you have access to its projects.</p>
+    }
+}
+else if (analysisResult != null)
+{
+    <h1>Analysis Results</h1>
+    
+    <button class="btn btn-secondary mb-3" @onclick="BackToProjects">← Back to Projects</button>
+
+    @if (analysisResult.Success)
+    {
+        <h2>Project: @analysisResult.ProjectName</h2>
+        
+        <div class="mb-4">
+            <h3>Detected Configuration</h3>
+            <p><strong>Project Type:</strong> @analysisResult.DetectedType</p>
+            <p><strong>Framework:</strong> @analysisResult.Framework</p>
+            <p><strong>Build Tool:</strong> @analysisResult.BuildTool</p>
+            @if (!string.IsNullOrEmpty(analysisResult.Version))
+            {
+                <p><strong>Version:</strong> @analysisResult.Version</p>
+            }
+            
+            @if (analysisResult.BuildCommands.Any())
+            {
+                <p><strong>Build Commands:</strong></p>
+                <ul>
+                    @foreach (var cmd in analysisResult.BuildCommands)
+                    {
+                        <li><code>@cmd</code></li>
+                    }
+                </ul>
+            }
+            
+            @if (analysisResult.TestCommands.Any())
+            {
+                <p><strong>Test Commands:</strong></p>
+                <ul>
+                    @foreach (var cmd in analysisResult.TestCommands)
+                    {
+                        <li><code>@cmd</code></li>
+                    }
+                </ul>
+            }
+        </div>
+        
+        <h3>Generated GitLab CI/CD Pipeline</h3>
+        <div class="yaml-output border p-3 bg-light" style="max-height: 400px; overflow-y: auto; font-family: 'Courier New', monospace; white-space: pre-wrap;">@analysisResult.YamlContent</div>
+        
+        <div class="mt-3">
+            <button class="btn btn-success" @onclick="CopyToClipboard">Copy YAML to Clipboard</button>
+        </div>
+    }
+    else
+    {
+        <div class="alert alert-danger">
+            <h3>Analysis Failed</h3>
+            <p>@analysisResult.ErrorMessage</p>
+        </div>
+    }
+}
+
+@code {
+    private GitLabConnectionModel connectionModel = new();
+    private List<ProjectItem>? projects;
+    private AnalysisResultModel? analysisResult;
+    private string? groupName;
+    private bool isConnecting = false;
+    private bool isAnalyzing = false;
+    private string? analyzingProject;
+    private string? errorMessage;
+
+    private async System.Threading.Tasks.Task HandleConnect()
+    {
+        isConnecting = true;
+        errorMessage = null;
+
+        try
+        {
+            var projectListOptions = new ProjectListOptions
+            {
+                MaxResults = 50,
+                MemberOnly = true
+            };
+
+            var gitlabProjects = await GitLabProjectService.ListProjectsAsync(projectListOptions);
+            
+            projects = gitlabProjects.Select(p => new ProjectItem
+            {
+                Id = p.Id,
+                Name = p.Name,
+                FullPath = p.FullPath,
+                Description = p.Description ?? "",
+                WebUrl = p.WebUrl
+            }).ToList();
+
+            groupName = $"Group {connectionModel.GroupId}";
+        }
+        catch (Exception ex)
+        {
+            errorMessage = $"Connection failed: {ex.Message}";
+        }
+        finally
+        {
+            isConnecting = false;
+        }
+    }
+
+    private async System.Threading.Tasks.Task AnalyzeProject(string projectPath, string projectName)
+    {
+        isAnalyzing = true;
+        analyzingProject = projectPath;
+
+        try
+        {
+            var gitlabProject = new GitLabProject
+            {
+                FullPath = projectPath,
+                Name = projectName
+            };
+
+            var analysisOptions = new AnalysisOptions
+            {
+                AnalyzeFiles = true,
+                AnalyzeDependencies = true,
+                AnalyzeExistingCI = true,
+                AnalyzeDeployment = true
+            };
+
+            var result = await ProjectAnalysisService.AnalyzeProjectAsync(gitlabProject, analysisOptions);
+            var pipeline = await PipelineGenerator.GenerateFromAnalysisAsync(result);
+            var yamlContent = PipelineGenerator.SerializeToYaml(pipeline);
+
+            analysisResult = new AnalysisResultModel
+            {
+                ProjectName = projectName,
+                DetectedType = result.DetectedType.ToString(),
+                Framework = result.Framework?.Name ?? "Unknown",
+                BuildTool = result.BuildConfig?.BuildTool ?? "Unknown",
+                Version = result.Framework?.Version ?? "",
+                BuildCommands = result.BuildConfig?.BuildCommands ?? new(),
+                TestCommands = result.BuildConfig?.TestCommands ?? new(),
+                YamlContent = yamlContent,
+                Success = true
+            };
+        }
+        catch (Exception ex)
+        {
+            analysisResult = new AnalysisResultModel
+            {
+                ProjectName = projectName,
+                Success = false,
+                ErrorMessage = ex.Message
+            };
+        }
+        finally
+        {
+            isAnalyzing = false;
+            analyzingProject = null;
+        }
+    }
+
+    private void BackToConnection()
+    {
+        projects = null;
+        analysisResult = null;
+        groupName = null;
+        errorMessage = null;
+    }
+
+    private void BackToProjects()
+    {
+        analysisResult = null;
+    }
+
+    private async System.Threading.Tasks.Task CopyToClipboard()
+    {
+        if (analysisResult?.YamlContent != null)
+        {
+            await JSRuntime.InvokeVoidAsync("navigator.clipboard.writeText", analysisResult.YamlContent);
+            await JSRuntime.InvokeVoidAsync("alert", "YAML copied to clipboard!");
+        }
+    }
+}

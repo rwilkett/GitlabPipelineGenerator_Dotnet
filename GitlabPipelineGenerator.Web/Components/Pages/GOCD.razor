@@ -1,0 +1,359 @@
+@page "/gocd"
+@using GitlabPipelineGenerator.Web.Models
+@using GitlabPipelineGenerator.GOCDApiClient.Models
+@using ApiTask = GitlabPipelineGenerator.GOCDApiClient.Models.Task
+@inject IJSRuntime JSRuntime
+
+<PageTitle>GOCD Connection</PageTitle>
+
+<h2>GOCD Connection</h2>
+
+@if (groups == null)
+{
+    <EditForm Model="connectionModel" OnValidSubmit="HandleConnect">
+        <DataAnnotationsValidator />
+        <ValidationSummary />
+
+        <div class="form-group mb-3">
+            <label for="serverUrl">GOCD Server URL</label>
+            <InputText id="serverUrl" class="form-control" @bind-Value="connectionModel.ServerUrl" />
+        </div>
+
+        <div class="form-group mb-3">
+            <label for="authMethod">Authentication Method</label>
+            <InputSelect id="authMethod" class="form-control" @bind-Value="connectionModel.AuthMethod">
+                <option value="token">Bearer Token</option>
+                <option value="basic">Username/Password</option>
+            </InputSelect>
+        </div>
+
+        @if (connectionModel.AuthMethod == "token")
+        {
+            <div class="form-group mb-3">
+                <label for="bearerToken">Bearer Token</label>
+                <InputText id="bearerToken" class="form-control" @bind-Value="connectionModel.BearerToken" />
+            </div>
+        }
+        else
+        {
+            <div class="form-group mb-3">
+                <label for="username">Username</label>
+                <InputText id="username" class="form-control" @bind-Value="connectionModel.Username" />
+            </div>
+            <div class="form-group mb-3">
+                <label for="password">Password</label>
+                <InputText id="password" type="password" class="form-control" @bind-Value="connectionModel.Password" />
+            </div>
+        }
+
+        <button type="submit" class="btn btn-primary" disabled="@isConnecting">
+            @if (isConnecting)
+            {
+                <span class="spinner-border spinner-border-sm" role="status"></span>
+                <span>Connecting...</span>
+            }
+            else
+            {
+                <span>Connect</span>
+            }
+        </button>
+    </EditForm>
+
+    @if (!string.IsNullOrEmpty(errorMessage))
+    {
+        <div class="alert alert-danger mt-3">@errorMessage</div>
+    }
+}
+else
+{
+    <h3>Pipeline Groups</h3>
+    
+    @if (groups.Any())
+    {
+        <div class="row">
+            @foreach (var group in groups)
+            {
+                <div class="col-md-4 mb-3">
+                    <div class="card">
+                        <div class="card-header">
+                            <h5>@group.Name</h5>
+                        </div>
+                        <div class="card-body">
+                            <p>@group.Pipelines.Count pipeline(s)</p>
+                            <button class="btn btn-primary" @onclick="() => LoadGroup(group.Name)">View Pipelines</button>
+                        </div>
+                    </div>
+                </div>
+            }
+        </div>
+    }
+    else
+    {
+        <p>No pipeline groups found.</p>
+    }
+
+    <button class="btn btn-secondary" @onclick="Disconnect">Back to Connection</button>
+}
+
+@if (selectedGroup != null)
+{
+    <div class="mt-4">
+        <h3>Pipeline Group: @selectedGroup.Name</h3>
+        
+        @if (selectedGroup.Pipelines.Any())
+        {
+            <div class="table-responsive">
+                <table class="table table-striped">
+                    <thead>
+                        <tr>
+                            <th>Pipeline Name</th>
+                            <th>Status</th>
+                            <th>Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @foreach (var pipeline in selectedGroup.Pipelines)
+                        {
+                            <tr>
+                                <td>@pipeline.Name</td>
+                                <td>
+                                    @if (pipeline.Locked)
+                                    {
+                                        <span class="badge bg-warning">Locked</span>
+                                    }
+                                    @if (pipeline.PauseInfo?.Paused == true)
+                                    {
+                                        <span class="badge bg-secondary">Paused</span>
+                                    }
+                                </td>
+                                <td>
+                                    <button class="btn btn-sm btn-primary" @onclick="() => LoadPipeline(pipeline.Name)">View Config</button>
+                                </td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            </div>
+        }
+        else
+        {
+            <p>No pipelines found in this group.</p>
+        }
+
+        <button class="btn btn-secondary" @onclick="BackToGroups">Back to Groups</button>
+    </div>
+}
+
+@if (selectedPipeline != null)
+{
+    <div class="mt-4">
+        <h3>Pipeline Configuration: @selectedPipeline.Name</h3>
+        
+        @if (!string.IsNullOrEmpty(selectedPipeline.Template))
+        {
+            <p><strong>Template:</strong> @selectedPipeline.Template</p>
+        }
+
+        @if (selectedPipeline.EnvironmentVariables.Any())
+        {
+            <h4>Environment Variables</h4>
+            <table class="table table-sm">
+                <thead>
+                    <tr>
+                        <th>Name</th>
+                        <th>Value</th>
+                        <th>Secure</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @foreach (var env in selectedPipeline.EnvironmentVariables)
+                    {
+                        <tr>
+                            <td>@env.Name</td>
+                            <td>@(env.Secure ? "***" : env.Value)</td>
+                            <td>@env.Secure</td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        }
+
+        @if (selectedPipeline.Materials.Any())
+        {
+            <h4>Materials</h4>
+            <table class="table table-sm">
+                <thead>
+                    <tr>
+                        <th>Type</th>
+                        <th>URL</th>
+                        <th>Branch</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @foreach (var material in selectedPipeline.Materials)
+                    {
+                        <tr>
+                            <td>@material.Type</td>
+                            <td>@material.Url</td>
+                            <td>@material.Branch</td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        }
+
+        @if (selectedPipeline.Stages.Any())
+        {
+            <h4>Stages</h4>
+            @foreach (var stage in selectedPipeline.Stages)
+            {
+                <div class="card mb-3">
+                    <div class="card-header">
+                        <h5>@stage.Name</h5>
+                    </div>
+                    <div class="card-body">
+                        @if (stage.Jobs.Any())
+                        {
+                            @foreach (var job in stage.Jobs)
+                            {
+                                <h6>Job: @job.Name</h6>
+                                @if (job.Tasks.Any())
+                                {
+                                    <ul>
+                                        @foreach (var task in job.Tasks)
+                                        {
+                                            <li>@task.Type: @task.Command</li>
+                                        }
+                                    </ul>
+                                }
+                            }
+                        }
+                    </div>
+                </div>
+            }
+        }
+
+        <button class="btn btn-secondary" @onclick="BackToGroup">Back to Group</button>
+    </div>
+}
+
+@code {
+    private GOCDConnectionModel connectionModel = new();
+    private List<PipelineGroup>? groups;
+    private PipelineGroup? selectedGroup;
+    private PipelineConfigModel? selectedPipeline;
+    private bool isConnecting = false;
+    private string? errorMessage;
+    private GitlabPipelineGenerator.GOCDApiClient.GOCDApiClient? client;
+
+    private async System.Threading.Tasks.Task HandleConnect()
+    {
+        isConnecting = true;
+        errorMessage = null;
+
+        try
+        {
+            client = connectionModel.AuthMethod == "token" 
+                ? new GitlabPipelineGenerator.GOCDApiClient.GOCDApiClient(connectionModel.ServerUrl, connectionModel.BearerToken!)
+                : new GitlabPipelineGenerator.GOCDApiClient.GOCDApiClient(connectionModel.ServerUrl, connectionModel.Username!, connectionModel.Password!);
+
+            groups = await client.GetPipelineGroupsAsync();
+        }
+        catch (Exception ex)
+        {
+            errorMessage = $"Connection failed: {ex.Message}";
+        }
+        finally
+        {
+            isConnecting = false;
+        }
+    }
+
+    private async System.Threading.Tasks.Task LoadGroup(string groupName)
+    {
+        if (client == null) return;
+
+        try
+        {
+            selectedGroup = await client.GetPipelineGroupAsync(groupName);
+            selectedPipeline = null;
+        }
+        catch (Exception ex)
+        {
+            errorMessage = $"Error loading group: {ex.Message}";
+        }
+    }
+
+    private async System.Threading.Tasks.Task LoadPipeline(string pipelineName)
+    {
+        if (client == null) return;
+
+        try
+        {
+            var pipelineConfig = await client.GetPipelineConfigAsync(pipelineName);
+            if (pipelineConfig != null)
+            {
+                selectedPipeline = new PipelineConfigModel
+                {
+                    Name = pipelineConfig.Name,
+                    Template = pipelineConfig.Template,
+                    EnvironmentVariables = pipelineConfig.EnvironmentVariables?.Select(e => new EnvironmentVariableModel
+                    {
+                        Name = e.Name,
+                        Value = e.Value,
+                        Secure = e.Secure
+                    }).ToList() ?? new(),
+                    Materials = pipelineConfig.Materials?.Select(m => new MaterialModel
+                    {
+                        Type = m.Type,
+                        Url = m.Attributes?.Url ?? "",
+                        Branch = m.Attributes?.Branch
+                    }).ToList() ?? new(),
+                    Stages = pipelineConfig.Stages?.Select(s => new StageModel
+                    {
+                        Name = s.Name,
+                        Jobs = s.Jobs?.Select(j => new JobModel
+                        {
+                            Name = j.Name,
+                            Tasks = j.Tasks?.Select(t => new TaskModel
+                            {
+                                Type = t.Type,
+                                Command = t.Attributes?.ContainsKey("command") == true ? t.Attributes["command"]?.ToString() ?? "" : ""
+                            }).ToList() ?? new()
+                        }).ToList() ?? new()
+                    }).ToList() ?? new()
+                };
+            }
+        }
+        catch (Exception ex)
+        {
+            errorMessage = $"Error loading pipeline: {ex.Message}";
+        }
+    }
+
+    private void Disconnect()
+    {
+        groups = null;
+        selectedGroup = null;
+        selectedPipeline = null;
+        client?.Dispose();
+        client = null;
+        errorMessage = null;
+    }
+
+    private void BackToGroups()
+    {
+        selectedGroup = null;
+        selectedPipeline = null;
+    }
+
+    private void BackToGroup()
+    {
+        selectedPipeline = null;
+    }
+
+    public void Dispose()
+    {
+        client?.Dispose();
+    }
+}
