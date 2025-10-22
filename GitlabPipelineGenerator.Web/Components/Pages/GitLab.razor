@@ -56,78 +56,201 @@ else if (projects != null && analysisResult == null)
     
     <button class="btn btn-secondary mb-3" @onclick="BackToConnection">← Back to Connection</button>
 
-    <div class="d-flex justify-content-between align-items-center mb-3">
-        <span>Page @currentPage</span>
-        <div>
-            <button class="btn btn-outline-primary me-2" @onclick="PreviousPage" disabled="@(currentPage == 1)">Previous</button>
-            <button class="btn btn-outline-primary" @onclick="NextPage" disabled="@(!hasMoreProjects && !hasMoreSubgroups)">Next</button>
-        </div>
-    </div>
+    <!-- Tab Navigation -->
+    <ul class="nav nav-tabs mb-3">
+        <li class="nav-item">
+            <button class="nav-link @(activeTabId == "main" ? "active" : "")" @onclick="@(() => SetActiveTab("main"))">Main</button>
+        </li>
+        @foreach (var tab in tabs)
+        {
+            <li class="nav-item">
+                <button class="nav-link @(activeTabId == tab.Id ? "active" : "")" @onclick="() => SetActiveTab(tab.Id)">
+                    @tab.Title
+                    <button class="btn btn-sm ms-2" @onclick="() => CloseTab(tab.Id)" @onclick:stopPropagation="true">×</button>
+                </button>
+            </li>
+        }
+    </ul>
 
-    @if (subgroups?.Any() == true)
+    <!-- Tab Content -->
+    @if (activeTabId == "main")
     {
-        <h4>Subgroups</h4>
-        <div class="row mb-4">
-            @foreach (var subgroup in subgroups)
-            {
-                <div class="col-md-6 mb-3">
-                    <div class="card border-info">
-                        <div class="card-body">
-                            <h5 class="card-title">📁 @subgroup.Name</h5>
-                            <p class="card-text">
-                                <strong>Path:</strong> @subgroup.FullPath<br>
-                                @if (!string.IsNullOrEmpty(subgroup.Description))
-                                {
-                                    <strong>Description:</strong> @subgroup.Description<br>
-                                }
-                                <strong>URL:</strong> <a href="@subgroup.WebUrl" target="_blank">@subgroup.WebUrl</a>
-                            </p>
+        <div class="d-flex justify-content-between align-items-center mb-3">
+            <span>Page @currentPage</span>
+            <div>
+                <button class="btn btn-outline-primary me-2" @onclick="PreviousPage" disabled="@(currentPage == 1)">Previous</button>
+                <button class="btn btn-outline-primary" @onclick="NextPage" disabled="@(!hasMoreProjects && !hasMoreSubgroups)">Next</button>
+            </div>
+        </div>
+
+        @if (subgroups?.Any() == true)
+        {
+            <h4>Subgroups</h4>
+            <div class="row mb-4">
+                @foreach (var subgroup in subgroups)
+                {
+                    <div class="col-md-6 mb-3">
+                        <div class="card border-info" style="cursor: pointer;" @onclick="() => OpenSubgroupTab(subgroup)">
+                            <div class="card-body">
+                                <h5 class="card-title">📁 @subgroup.Name</h5>
+                                <p class="card-text">
+                                    <strong>Path:</strong> @subgroup.FullPath<br>
+                                    @if (!string.IsNullOrEmpty(subgroup.Description))
+                                    {
+                                        <strong>Description:</strong> @subgroup.Description<br>
+                                    }
+                                    <strong>URL:</strong> <a href="@subgroup.WebUrl" target="_blank" @onclick:stopPropagation="true">@subgroup.WebUrl</a>
+                                </p>
+                            </div>
                         </div>
+                    </div>
+                }
+            </div>
+        }
+
+        @if (projects?.Any() == true)
+        {
+            <h4>Projects</h4>
+            <div class="row">
+                @foreach (var project in projects)
+                {
+                    <div class="col-md-6 mb-3">
+                        <div class="card" style="cursor: pointer;" @onclick="() => OpenProjectTab(project)">
+                            <div class="card-body">
+                                <h5 class="card-title">@project.Name</h5>
+                                <p class="card-text">
+                                    <strong>Path:</strong> @project.FullPath<br>
+                                    @if (!string.IsNullOrEmpty(project.Description))
+                                    {
+                                        <strong>Description:</strong> @project.Description<br>
+                                    }
+                                    <strong>URL:</strong> <a href="@project.WebUrl" target="_blank" @onclick:stopPropagation="true">@project.WebUrl</a>
+                                </p>
+                                <button class="btn btn-primary" @onclick="() => AnalyzeProject(project.FullPath, project.Name)" @onclick:stopPropagation="true" disabled="@isAnalyzing">
+                                    @if (isAnalyzing && analyzingProject == project.FullPath)
+                                    {
+                                        <span class="spinner-border spinner-border-sm" role="status"></span>
+                                        <span>Analyzing...</span>
+                                    }
+                                    else
+                                    {
+                                        <span>Analyze Project</span>
+                                    }
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                }
+            </div>
+        }
+        
+        @if ((projects?.Any() != true) && (subgroups?.Any() != true))
+        {
+            <p>No projects or subgroups found in group "@groupName" (ID: @connectionModel.GroupId). Make sure the group ID is correct and you have access to its contents.</p>
+        }
+    }
+    else
+    {
+        var currentTab = tabs.FirstOrDefault(t => t.Id == activeTabId);
+        @if (currentTab != null)
+        {
+            @if (currentTab.Type == "group")
+            {
+                <div class="d-flex justify-content-between align-items-center mb-3">
+                    <span>Page @currentTab.CurrentPage</span>
+                    <div>
+                        <button class="btn btn-outline-primary me-2" @onclick="() => PreviousTabPage(currentTab.Id)" disabled="@(currentTab.CurrentPage == 1)">Previous</button>
+                        <button class="btn btn-outline-primary" @onclick="() => NextTabPage(currentTab.Id)" disabled="@(!currentTab.HasMoreProjects && !currentTab.HasMoreSubgroups)">Next</button>
+                    </div>
+                </div>
+
+                @if (currentTab.Subgroups?.Any() == true)
+                {
+                    <h4>Subgroups</h4>
+                    <div class="row mb-4">
+                        @foreach (var subgroup in currentTab.Subgroups)
+                        {
+                            <div class="col-md-6 mb-3">
+                                <div class="card border-info" style="cursor: pointer;" @onclick="() => OpenSubgroupTab(subgroup)">
+                                    <div class="card-body">
+                                        <h5 class="card-title">📁 @subgroup.Name</h5>
+                                        <p class="card-text">
+                                            <strong>Path:</strong> @subgroup.FullPath<br>
+                                            @if (!string.IsNullOrEmpty(subgroup.Description))
+                                            {
+                                                <strong>Description:</strong> @subgroup.Description<br>
+                                            }
+                                            <strong>URL:</strong> <a href="@subgroup.WebUrl" target="_blank" @onclick:stopPropagation="true">@subgroup.WebUrl</a>
+                                        </p>
+                                    </div>
+                                </div>
+                            </div>
+                        }
+                    </div>
+                }
+
+                @if (currentTab.Projects?.Any() == true)
+                {
+                    <h4>Projects</h4>
+                    <div class="row">
+                        @foreach (var project in currentTab.Projects)
+                        {
+                            <div class="col-md-6 mb-3">
+                                <div class="card" style="cursor: pointer;" @onclick="() => OpenProjectTab(project)">
+                                    <div class="card-body">
+                                        <h5 class="card-title">@project.Name</h5>
+                                        <p class="card-text">
+                                            <strong>Path:</strong> @project.FullPath<br>
+                                            @if (!string.IsNullOrEmpty(project.Description))
+                                            {
+                                                <strong>Description:</strong> @project.Description<br>
+                                            }
+                                            <strong>URL:</strong> <a href="@project.WebUrl" target="_blank" @onclick:stopPropagation="true">@project.WebUrl</a>
+                                        </p>
+                                        <button class="btn btn-primary" @onclick="() => AnalyzeProject(project.FullPath, project.Name)" @onclick:stopPropagation="true" disabled="@isAnalyzing">
+                                            @if (isAnalyzing && analyzingProject == project.FullPath)
+                                            {
+                                                <span class="spinner-border spinner-border-sm" role="status"></span>
+                                                <span>Analyzing...</span>
+                                            }
+                                            else
+                                            {
+                                                <span>Analyze Project</span>
+                                            }
+                                        </button>
+                                    </div>
+                                </div>
+                            </div>
+                        }
+                    </div>
+                }
+            }
+            else if (currentTab.Type == "project" && currentTab.Project != null)
+            {
+                <h4>Project: @currentTab.Project.Name</h4>
+                <div class="card">
+                    <div class="card-body">
+                        <p><strong>Path:</strong> @currentTab.Project.FullPath</p>
+                        @if (!string.IsNullOrEmpty(currentTab.Project.Description))
+                        {
+                            <p><strong>Description:</strong> @currentTab.Project.Description</p>
+                        }
+                        <p><strong>URL:</strong> <a href="@currentTab.Project.WebUrl" target="_blank">@currentTab.Project.WebUrl</a></p>
+                        <button class="btn btn-primary" @onclick="() => AnalyzeProject(currentTab.Project.FullPath, currentTab.Project.Name)" disabled="@isAnalyzing">
+                            @if (isAnalyzing && analyzingProject == currentTab.Project.FullPath)
+                            {
+                                <span class="spinner-border spinner-border-sm" role="status"></span>
+                                <span>Analyzing...</span>
+                            }
+                            else
+                            {
+                                <span>Analyze Project</span>
+                            }
+                        </button>
                     </div>
                 </div>
             }
-        </div>
-    }
-
-    @if (projects?.Any() == true)
-    {
-        <h4>Projects</h4>
-        <div class="row">
-            @foreach (var project in projects)
-            {
-                <div class="col-md-6 mb-3">
-                    <div class="card">
-                        <div class="card-body">
-                            <h5 class="card-title">@project.Name</h5>
-                            <p class="card-text">
-                                <strong>Path:</strong> @project.FullPath<br>
-                                @if (!string.IsNullOrEmpty(project.Description))
-                                {
-                                    <strong>Description:</strong> @project.Description<br>
-                                }
-                                <strong>URL:</strong> <a href="@project.WebUrl" target="_blank">@project.WebUrl</a>
-                            </p>
-                            <button class="btn btn-primary" @onclick="() => AnalyzeProject(project.FullPath, project.Name)" disabled="@isAnalyzing">
-                                @if (isAnalyzing && analyzingProject == project.FullPath)
-                                {
-                                    <span class="spinner-border spinner-border-sm" role="status"></span>
-                                    <span>Analyzing...</span>
-                                }
-                                else
-                                {
-                                    <span>Analyze Project</span>
-                                }
-                            </button>
-                        </div>
-                    </div>
-                </div>
-            }
-        </div>
-    }
-    
-    @if ((projects?.Any() != true) && (subgroups?.Any() != true))
-    {
-        <p>No projects or subgroups found in group "@groupName" (ID: @connectionModel.GroupId). Make sure the group ID is correct and you have access to its contents.</p>
+        }
     }
 }
 else if (analysisResult != null)
@@ -203,6 +326,24 @@ else if (analysisResult != null)
     private int pageSize = 10;
     private bool hasMoreProjects = false;
     private bool hasMoreSubgroups = false;
+    
+    private List<TabItem> tabs = new();
+    private string activeTabId = "main";
+    private int tabCounter = 0;
+    
+    public class TabItem
+    {
+        public string Id { get; set; } = string.Empty;
+        public string Title { get; set; } = string.Empty;
+        public string Type { get; set; } = string.Empty; // "group" or "project"
+        public string GroupId { get; set; } = string.Empty;
+        public ProjectItem? Project { get; set; }
+        public List<ProjectItem>? Projects { get; set; }
+        public List<SubgroupItem>? Subgroups { get; set; }
+        public int CurrentPage { get; set; } = 1;
+        public bool HasMoreProjects { get; set; }
+        public bool HasMoreSubgroups { get; set; }
+    }
 
     private async System.Threading.Tasks.Task HandleConnect()
     {
@@ -336,6 +477,104 @@ else if (analysisResult != null)
         }
     }
 
+    private async Task OpenSubgroupTab(SubgroupItem subgroup)
+    {
+        var tabId = $"group_{++tabCounter}";
+        var tab = new TabItem
+        {
+            Id = tabId,
+            Title = subgroup.Name,
+            Type = "group",
+            GroupId = subgroup.Id.ToString()
+        };
+        
+        tabs.Add(tab);
+        activeTabId = tabId;
+        
+        await LoadTabData(tab);
+    }
+    
+    private void OpenProjectTab(ProjectItem project)
+    {
+        var tabId = $"project_{++tabCounter}";
+        var tab = new TabItem
+        {
+            Id = tabId,
+            Title = project.Name,
+            Type = "project",
+            Project = project
+        };
+        
+        tabs.Add(tab);
+        activeTabId = tabId;
+    }
+    
+    private async Task LoadTabData(TabItem tab)
+    {
+        if (tab.Type == "group")
+        {
+            var gitlabClient = new GitlabPipelineGenerator.GitLabApiClient.GitLabClient(
+                connectionModel.ServerUrl, 
+                connectionModel.Token);
+            
+            var projectsResult = await gitlabClient.GetGroupProjectsAsync(tab.GroupId, pageSize, tab.CurrentPage);
+            tab.Projects = projectsResult.Select(p => new ProjectItem
+            {
+                Id = p.Id,
+                Name = p.Name,
+                FullPath = p.PathWithNamespace,
+                Description = p.Description ?? "",
+                WebUrl = p.WebUrl
+            }).ToList();
+            tab.HasMoreProjects = projectsResult.Count == pageSize;
+            
+            var subgroupsResult = await gitlabClient.GetSubgroupsAsync(tab.GroupId, pageSize, tab.CurrentPage);
+            tab.Subgroups = subgroupsResult.Select(g => new SubgroupItem
+            {
+                Id = g.Id,
+                Name = g.Name,
+                FullPath = g.FullPath,
+                Description = g.Description ?? "",
+                WebUrl = g.WebUrl
+            }).ToList();
+            tab.HasMoreSubgroups = subgroupsResult.Count == pageSize;
+        }
+    }
+    
+    private void SetActiveTab(string tabId)
+    {
+        activeTabId = tabId;
+    }
+    
+    private void CloseTab(string tabId)
+    {
+        tabs.RemoveAll(t => t.Id == tabId);
+        if (activeTabId == tabId)
+        {
+            activeTabId = tabs.Any() ? tabs.Last().Id : "main";
+        }
+    }
+    
+    private async Task NextTabPage(string tabId)
+    {
+        var tab = tabs.FirstOrDefault(t => t.Id == tabId);
+        if (tab != null)
+        {
+            tab.CurrentPage++;
+            await LoadTabData(tab);
+        }
+    }
+    
+    private async Task PreviousTabPage(string tabId)
+    {
+        var tab = tabs.FirstOrDefault(t => t.Id == tabId);
+        if (tab != null && tab.CurrentPage > 1)
+        {
+            tab.CurrentPage--;
+            await LoadTabData(tab);
+        }
+    }
+
     private void BackToConnection()
     {
         projects = null;
@@ -344,6 +583,9 @@ else if (analysisResult != null)
         groupName = null;
         errorMessage = null;
         currentPage = 1;
+        tabs.Clear();
+        activeTabId = "main";
+        tabCounter = 0;
     }
 
     private void BackToProjects()
