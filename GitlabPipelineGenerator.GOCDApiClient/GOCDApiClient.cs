@@ -89,6 +89,8 @@ public class GOCDApiClient : IDisposable
 
     public async Task<Template?> GetTemplateAsync(string templateName)
     {
+        _httpClient.DefaultRequestHeaders.Accept.Clear();
+        _httpClient.DefaultRequestHeaders.Accept.Add(new System.Net.Http.Headers.MediaTypeWithQualityHeaderValue("application/vnd.go.cd.v6+json"));
         var response = await _httpClient.GetAsync($"{_baseUrl}/go/api/admin/templates/{templateName}");
 
         if (!response.IsSuccessStatusCode)

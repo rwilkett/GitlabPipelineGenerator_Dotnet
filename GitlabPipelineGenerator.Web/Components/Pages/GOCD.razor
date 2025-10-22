@@ -207,7 +207,37 @@ else
             </table>
         }
 
-        @if (selectedPipeline.Stages.Any())
+        @if (selectedTemplate != null)
+        {
+            <h4>Template Stages (@selectedTemplate.Name)</h4>
+            @foreach (var stage in selectedTemplate.Stages)
+            {
+                <div class="card mb-3">
+                    <div class="card-header">
+                        <h5>@stage.Name</h5>
+                    </div>
+                    <div class="card-body">
+                        @if (stage.Jobs.Any())
+                        {
+                            @foreach (var job in stage.Jobs)
+                            {
+                                <h6>Job: @job.Name</h6>
+                                @if (job.Tasks.Any())
+                                {
+                                    <ul>
+                                        @foreach (var task in job.Tasks)
+                                        {
+                                            <li>@task.Type: @(task.Attributes.ContainsKey("command") ? task.Attributes["command"]?.ToString() ?? "" : "")</li>
+                                        }
+                                    </ul>
+                                }
+                            }
+                        }
+                    </div>
+                </div>
+            }
+        }
+        else if (selectedPipeline.Stages.Any())
         {
             <h4>Stages</h4>
             @foreach (var stage in selectedPipeline.Stages)
@@ -248,6 +278,7 @@ else
     private List<PipelineGroup>? groups;
     private PipelineGroup? selectedGroup;
     private PipelineConfigModel? selectedPipeline;
+    private Template? selectedTemplate;
     private bool isConnecting = false;
     private string? errorMessage;
     private GitlabPipelineGenerator.GOCDApiClient.GOCDApiClient? client;
@@ -329,6 +360,16 @@ else
                         }).ToList() ?? new()
                     }).ToList() ?? new()
                 };
+
+                // Load template if pipeline uses one
+                if (!string.IsNullOrEmpty(pipelineConfig.Template))
+                {
+                    selectedTemplate = await client.GetTemplateAsync(pipelineConfig.Template);
+                }
+                else
+                {
+                    selectedTemplate = null;
+                }
             }
         }
         catch (Exception ex)
@@ -351,11 +392,13 @@ else
     {
         selectedGroup = null;
         selectedPipeline = null;
+        selectedTemplate = null;
     }
 
     private void BackToGroup()
     {
         selectedPipeline = null;
+        selectedTemplate = null;
     }
 
     public void Dispose()
