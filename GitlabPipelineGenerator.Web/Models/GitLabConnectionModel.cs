@@ -2,6 +2,7 @@ namespace GitlabPipelineGenerator.Web.Models;
 
 public class GitLabConnectionModel
 {
+    public string ServerUrl { get; set; } = "https://gitlab.com";
     public string Token { get; set; } = string.Empty;
     public string GroupId { get; set; } = string.Empty;
     public bool IsConnected { get; set; }
@@ -16,6 +17,15 @@ public class ProjectListModel
 }
 
 public class ProjectItem
+{
+    public int Id { get; set; }
+    public string Name { get; set; } = string.Empty;
+    public string FullPath { get; set; } = string.Empty;
+    public string Description { get; set; } = string.Empty;
+    public string WebUrl { get; set; } = string.Empty;
+}
+
+public class SubgroupItem
 {
     public int Id { get; set; }
     public string Name { get; set; } = string.Empty;

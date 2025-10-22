@@ -221,16 +221,65 @@ else
                         {
                             @foreach (var job in stage.Jobs)
                             {
-                                <h6>Job: @job.Name</h6>
-                                @if (job.Tasks.Any())
-                                {
-                                    <ul>
-                                        @foreach (var task in job.Tasks)
-                                        {
-                                            <li>@task.Type: @(task.Attributes.ContainsKey("command") ? task.Attributes["command"]?.ToString() ?? "" : "")</li>
-                                        }
-                                    </ul>
-                                }
+                                <div class="border p-3 mb-3">
+                                    <h6>Job: @job.Name</h6>
+                                    
+                                    @if (job.EnvironmentVariables.Any())
+                                    {
+                                        <h7><strong>Environment Variables:</strong></h7>
+                                        <table class="table table-sm table-bordered mt-2">
+                                            <thead>
+                                                <tr><th>Name</th><th>Value</th><th>Secure</th></tr>
+                                            </thead>
+                                            <tbody>
+                                                @foreach (var env in job.EnvironmentVariables)
+                                                {
+                                                    <tr>
+                                                        <td>@env.Name</td>
+                                                        <td>@(env.Secure ? "***" : env.Value)</td>
+                                                        <td>@env.Secure</td>
+                                                    </tr>
+                                                }
+                                            </tbody>
+                                        </table>
+                                    }
+                                    
+                                    @if (job.Tabs.Any())
+                                    {
+                                        <h7><strong>Custom Tabs:</strong></h7>
+                                        <ul class="mt-2">
+                                            @foreach (var tab in job.Tabs)
+                                            {
+                                                <li><strong>@tab.Name:</strong> @tab.Path</li>
+                                            }
+                                        </ul>
+                                    }
+                                    
+                                    @if (job.Tasks.Any())
+                                    {
+                                        <h7><strong>Tasks:</strong></h7>
+                                        <ul class="mt-2">
+                                            @foreach (var task in job.Tasks)
+                                            {
+                                                <li>
+                                                    <strong>@task.Type:</strong> 
+                                                    @if (task.Attributes.ContainsKey("command"))
+                                                    {
+                                                        <span>@task.Attributes["command"]</span>
+                                                    }
+                                                    @if (task.Attributes.ContainsKey("arguments"))
+                                                    {
+                                                        <span> @task.Attributes["arguments"]</span>
+                                                    }
+                                                    @if (task.Attributes.ContainsKey("working_directory"))
+                                                    {
+                                                        <br/><small class="text-muted">Working Directory: @task.Attributes["working_directory"]</small>
+                                                    }
+                                                </li>
+                                            }
+                                        </ul>
+                                    }
+                                </div>
                             }
                         }
                     </div>
