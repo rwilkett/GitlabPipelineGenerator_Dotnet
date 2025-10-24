@@ -26,6 +26,11 @@ public class AnalysisOptions
     public bool AnalyzeDeployment { get; set; } = true;
 
     /// <summary>
+    /// Whether to analyze project-level CI/CD variables
+    /// </summary>
+    public bool AnalyzeVariables { get; set; } = true;
+
+    /// <summary>
     /// Maximum depth for file analysis (directory levels)
     /// </summary>
     public int MaxFileAnalysisDepth { get; set; } = 3;

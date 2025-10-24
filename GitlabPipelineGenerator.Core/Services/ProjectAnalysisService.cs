@@ -88,6 +88,13 @@ public class ProjectAnalysisService : IProjectAnalysisService
                 result.Metadata.AnalyzedComponents.Add("ConfigurationAnalyzer-Deployment");
             }
 
+            // Analyze project variables
+            if (options.AnalyzeVariables)
+            {
+                result.Variables = await _gitLabProjectService.GetProjectVariablesAsync(project.Id.ToString());
+                result.Metadata.AnalyzedComponents.Add("ProjectVariables");
+            }
+
             // Generate cache and security recommendations
             if (result.Dependencies.TotalDependencies > 0)
             {
@@ -282,6 +289,9 @@ public class ProjectAnalysisService : IProjectAnalysisService
         if (result.ExistingCI?.HasExistingConfig == true)
             confidenceScores.Add((int)result.ExistingCI.Confidence);
 
+        if (result.Variables?.TotalVariables > 0)
+            confidenceScores.Add((int)result.Variables.Confidence);
+
         if (!confidenceScores.Any())
             return AnalysisConfidence.Low;
 
@@ -339,6 +349,28 @@ public class ProjectAnalysisService : IProjectAnalysisService
                 Resolution = "Consider migrating to GitLab CI/CD for better integration"
             });
         }
+
+        if (result.Variables?.Confidence == AnalysisConfidence.Low)
+        {
+            warnings.Add(new AnalysisWarning
+            {
+                Severity = WarningSeverity.Warning,
+                Message = "Could not access project variables - insufficient permissions",
+                Component = "ProjectVariables",
+                Resolution = "Ensure your access token has 'read_api' scope and you have at least Reporter access to the project"
+            });
+        }
+
+        if (result.Variables?.MaskedVariables > 0)
+        {
+            warnings.Add(new AnalysisWarning
+            {
+                Severity = WarningSeverity.Info,
+                Message = $"{result.Variables.MaskedVariables} masked variable(s) detected",
+                Component = "ProjectVariables",
+                Resolution = "Masked variables will be hidden in pipeline logs for security"
+            });
+        }
     }
 
     private void GenerateRecommendations(ProjectAnalysisResult result, List<string> recommendations)
@@ -372,6 +404,16 @@ public class ProjectAnalysisService : IProjectAnalysisService
         {
             var envCount = result.Environment.Environments.Count;
             recommendations.Add($"{envCount} environment(s) detected - configuring environment-specific deployments");
+        }
+
+        if (result.Variables?.TotalVariables > 0)
+        {
+            recommendations.Add($"{result.Variables.TotalVariables} project variable(s) detected - will be available in pipeline");
+            
+            if (result.Variables.EnvironmentScopes.Count > 1)
+            {
+                recommendations.Add($"Environment-scoped variables detected for: {string.Join(", ", result.Variables.EnvironmentScopes)}");
+            }
         }
     }
 

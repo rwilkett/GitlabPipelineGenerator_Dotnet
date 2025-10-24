@@ -2,13 +2,12 @@
 @using GitlabPipelineGenerator.Web.Models
 @using GitlabPipelineGenerator.Core.Interfaces
 @using GitlabPipelineGenerator.Core.Models.GitLab
+@using GitlabPipelineGenerator.Web.Services
 @inject IGitLabProjectService GitLabProjectService
 @inject IProjectAnalysisService ProjectAnalysisService
 @inject IIntelligentPipelineGenerator PipelineGenerator
 @inject IJSRuntime JSRuntime
-@inject IGitLabProjectService GitLabProjectService
-@inject IProjectAnalysisService ProjectAnalysisService
-@inject IIntelligentPipelineGenerator PipelineGenerator
+@inject LoadingService LoadingService
 
 <PageTitle>GitLab Pipeline Generator</PageTitle>
 
@@ -53,6 +52,24 @@
 else if (projects != null && analysisResult == null)
 {
     <h2>Group: @groupName (@connectionModel.GroupId)</h2>
+    @if (mainGroupVariables != null && mainGroupVariables.TotalVariables > 0)
+    {
+        <div class="alert alert-info mb-3">
+            <strong>Group CI/CD Variables:</strong> @mainGroupVariables.TotalVariables total
+            @if (mainGroupVariables.ProtectedVariables > 0)
+            {
+                <span class="badge bg-warning ms-2">@mainGroupVariables.ProtectedVariables Protected</span>
+            }
+            @if (mainGroupVariables.MaskedVariables > 0)
+            {
+                <span class="badge bg-secondary ms-1">@mainGroupVariables.MaskedVariables Masked</span>
+            }
+            @if (mainGroupVariables.EnvironmentScopes.Count > 1)
+            {
+                <br><small>Environment Scopes: @string.Join(", ", mainGroupVariables.EnvironmentScopes)</small>
+            }
+        </div>
+    }
     
     <button class="btn btn-secondary mb-3" @onclick="BackToConnection">← Back to Connection</button>
 
@@ -99,7 +116,20 @@ else if (projects != null && analysisResult == null)
                                     {
                                         <strong>Description:</strong> @subgroup.Description<br>
                                     }
-                                    <strong>URL:</strong> <a href="@subgroup.WebUrl" target="_blank" @onclick:stopPropagation="true">@subgroup.WebUrl</a>
+                                    <strong>URL:</strong> <a href="@subgroup.WebUrl" target="_blank" @onclick:stopPropagation="true">@subgroup.WebUrl</a><br>
+                                    @if (subgroup.Variables != null && subgroup.Variables.TotalVariables > 0)
+                                    {
+                                        <strong>CI/CD Variables:</strong> @subgroup.Variables.TotalVariables
+                                        @if (subgroup.Variables.ProtectedVariables > 0)
+                                        {
+                                            <span class="badge bg-warning ms-1">@subgroup.Variables.ProtectedVariables Protected</span>
+                                        }
+                                        @if (subgroup.Variables.MaskedVariables > 0)
+                                        {
+                                            <span class="badge bg-secondary ms-1">@subgroup.Variables.MaskedVariables Masked</span>
+                                        }
+                                        <br><button class="btn btn-sm btn-outline-info mt-2" @onclick="() => ShowVariables(subgroup.Variables)" @onclick:stopPropagation="true">View Variables</button>
+                                    }
                                 </p>
                             </div>
                         </div>
@@ -180,7 +210,20 @@ else if (projects != null && analysisResult == null)
                                             {
                                                 <strong>Description:</strong> @subgroup.Description<br>
                                             }
-                                            <strong>URL:</strong> <a href="@subgroup.WebUrl" target="_blank" @onclick:stopPropagation="true">@subgroup.WebUrl</a>
+                                            <strong>URL:</strong> <a href="@subgroup.WebUrl" target="_blank" @onclick:stopPropagation="true">@subgroup.WebUrl</a><br>
+                                            @if (subgroup.Variables != null && subgroup.Variables.TotalVariables > 0)
+                                            {
+                                                <strong>CI/CD Variables:</strong> @subgroup.Variables.TotalVariables
+                                                @if (subgroup.Variables.ProtectedVariables > 0)
+                                                {
+                                                    <span class="badge bg-warning ms-1">@subgroup.Variables.ProtectedVariables Protected</span>
+                                                }
+                                                @if (subgroup.Variables.MaskedVariables > 0)
+                                                {
+                                                    <span class="badge bg-secondary ms-1">@subgroup.Variables.MaskedVariables Masked</span>
+                                                }
+                                                <br><button class="btn btn-sm btn-outline-info mt-2" @onclick="() => ShowVariables(subgroup.Variables)" @onclick:stopPropagation="true">View Variables</button>
+                                            }
                                         </p>
                                     </div>
                                 </div>
@@ -294,6 +337,23 @@ else if (analysisResult != null)
                     }
                 </ul>
             }
+            
+            @if (analysisResult.Variables != null && analysisResult.Variables.TotalVariables > 0)
+            {
+                <p><strong>CI/CD Variables:</strong> @analysisResult.Variables.TotalVariables total</p>
+                @if (analysisResult.Variables.ProtectedVariables > 0)
+                {
+                    <p><strong>Protected Variables:</strong> @analysisResult.Variables.ProtectedVariables</p>
+                }
+                @if (analysisResult.Variables.MaskedVariables > 0)
+                {
+                    <p><strong>Masked Variables:</strong> @analysisResult.Variables.MaskedVariables</p>
+                }
+                @if (analysisResult.Variables.EnvironmentScopes.Count > 1)
+                {
+                    <p><strong>Environment Scopes:</strong> @string.Join(", ", analysisResult.Variables.EnvironmentScopes)</p>
+                }
+            }
         </div>
         
         <h3>Generated GitLab CI/CD Pipeline</h3>
@@ -312,12 +372,76 @@ else if (analysisResult != null)
     }
 }
 
+<!-- Variables Modal -->
+@if (showVariablesModal && selectedVariables != null)
+{
+    <div class="modal show d-block" tabindex="-1" style="background-color: rgba(0,0,0,0.5);">
+        <div class="modal-dialog modal-lg">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title">CI/CD Variables</h5>
+                    <button type="button" class="btn-close" @onclick="CloseVariablesModal"></button>
+                </div>
+                <div class="modal-body">
+                    <div class="table-responsive">
+                        <table class="table table-striped">
+                            <thead>
+                                <tr>
+                                    <th>Key</th>
+                                    <th>Value</th>
+                                    <th>Environment</th>
+                                    <th>Type</th>
+                                    <th>Flags</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                @foreach (var variable in selectedVariables.Variables)
+                                {
+                                    <tr>
+                                        <td><code>@variable.Key</code></td>
+                                        <td>
+                                            @if (variable.Masked)
+                                            {
+                                                <span class="text-muted">***masked***</span>
+                                            }
+                                            else
+                                            {
+                                                <code>@(string.IsNullOrEmpty(variable.Description) ? "[value hidden]" : variable.Description)</code>
+                                            }
+                                        </td>
+                                        <td><span class="badge bg-light text-dark">@variable.EnvironmentScope</span></td>
+                                        <td><span class="badge bg-info">@variable.VariableType</span></td>
+                                        <td>
+                                            @if (variable.Protected)
+                                            {
+                                                <span class="badge bg-warning">Protected</span>
+                                            }
+                                            @if (variable.Masked)
+                                            {
+                                                <span class="badge bg-secondary">Masked</span>
+                                            }
+                                        </td>
+                                    </tr>
+                                }
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" @onclick="CloseVariablesModal">Close</button>
+                </div>
+            </div>
+        </div>
+    </div>
+}
+
 @code {
     private GitLabConnectionModel connectionModel = new();
     private List<ProjectItem>? projects;
     private List<SubgroupItem>? subgroups;
     private AnalysisResultModel? analysisResult;
     private string? groupName;
+    private ProjectVariablesModel? mainGroupVariables;
     private bool isConnecting = false;
     private bool isAnalyzing = false;
     private string? analyzingProject;
@@ -330,6 +454,8 @@ else if (analysisResult != null)
     private List<TabItem> tabs = new();
     private string activeTabId = "main";
     private int tabCounter = 0;
+    private bool showVariablesModal = false;
+    private ProjectVariablesModel? selectedVariables;
     
     public class TabItem
     {
@@ -343,12 +469,14 @@ else if (analysisResult != null)
         public int CurrentPage { get; set; } = 1;
         public bool HasMoreProjects { get; set; }
         public bool HasMoreSubgroups { get; set; }
+        public ProjectVariablesModel? Variables { get; set; }
     }
 
     private async System.Threading.Tasks.Task HandleConnect()
     {
         isConnecting = true;
         errorMessage = null;
+        LoadingService.SetLoading(true, "Connecting to GitLab...");
 
         try
         {
@@ -360,10 +488,38 @@ else if (analysisResult != null)
             // Set the authenticated client on the service
             GitLabProjectService.SetAuthenticatedClient(gitlabClient);
             
+            LoadingService.SetLoading(true, "Loading group information...");
             // Get group info
             var group = await gitlabClient.GetGroupAsync(connectionModel.GroupId);
             groupName = group.Name;
             
+            // Get main group variables
+            try
+            {
+                var groupVars = await gitlabClient.GetGroupVariablesAsync(connectionModel.GroupId);
+                mainGroupVariables = new ProjectVariablesModel
+                {
+                    TotalVariables = groupVars.Count,
+                    ProtectedVariables = groupVars.Count(v => v.Protected),
+                    MaskedVariables = groupVars.Count(v => v.Masked),
+                    EnvironmentScopes = groupVars.Select(v => v.EnvironmentScope).Distinct().ToList(),
+                    Variables = groupVars.Select(v => new ProjectVariableModel
+                    {
+                        Key = v.Key,
+                        VariableType = v.VariableType,
+                        Protected = v.Protected,
+                        Masked = v.Masked,
+                        EnvironmentScope = v.EnvironmentScope,
+                        Description = v.Description
+                    }).ToList()
+                };
+            }
+            catch
+            {
+                // Ignore errors fetching main group variables
+            }
+            
+            LoadingService.SetLoading(true, "Loading projects and subgroups...");
             // Get projects and subgroups
             await LoadPageData();
         }
@@ -374,6 +530,7 @@ else if (analysisResult != null)
         finally
         {
             isConnecting = false;
+            LoadingService.SetLoading(false);
         }
     }
 
@@ -381,6 +538,7 @@ else if (analysisResult != null)
     {
         isAnalyzing = true;
         analyzingProject = projectPath;
+        LoadingService.SetLoading(true, $"Analyzing {projectName}...");
 
         try
         {
@@ -395,10 +553,14 @@ else if (analysisResult != null)
                 AnalyzeFiles = true,
                 AnalyzeDependencies = true,
                 AnalyzeExistingCI = true,
-                AnalyzeDeployment = true
+                AnalyzeDeployment = true,
+                AnalyzeVariables = true
             };
 
+            LoadingService.SetLoading(true, "Analyzing project structure...");
             var result = await ProjectAnalysisService.AnalyzeProjectAsync(gitlabProject, analysisOptions);
+            
+            LoadingService.SetLoading(true, "Generating pipeline...");
             var pipeline = await PipelineGenerator.GenerateFromAnalysisAsync(result);
             var yamlContent = PipelineGenerator.SerializeToYaml(pipeline);
 
@@ -412,7 +574,23 @@ else if (analysisResult != null)
                 BuildCommands = result.BuildConfig?.BuildCommands ?? new(),
                 TestCommands = result.BuildConfig?.TestCommands ?? new(),
                 YamlContent = yamlContent,
-                Success = true
+                Success = true,
+                Variables = result.Variables != null ? new ProjectVariablesModel
+                {
+                    TotalVariables = result.Variables.TotalVariables,
+                    ProtectedVariables = result.Variables.ProtectedVariables,
+                    MaskedVariables = result.Variables.MaskedVariables,
+                    EnvironmentScopes = result.Variables.EnvironmentScopes,
+                    Variables = result.Variables.Variables.Select(v => new ProjectVariableModel
+                    {
+                        Key = v.Key,
+                        VariableType = v.VariableType,
+                        Protected = v.Protected,
+                        Masked = v.Masked,
+                        EnvironmentScope = v.EnvironmentScope,
+                        Description = v.Description
+                    }).ToList()
+                } : null
             };
         }
         catch (Exception ex)
@@ -428,6 +606,7 @@ else if (analysisResult != null)
         {
             isAnalyzing = false;
             analyzingProject = null;
+            LoadingService.SetLoading(false);
         }
     }
 
@@ -449,16 +628,47 @@ else if (analysisResult != null)
         }).ToList();
         hasMoreProjects = projectsResult.Count == pageSize;
         
-        // Load subgroups
+        // Load subgroups with variables
         var subgroupsResult = await gitlabClient.GetSubgroupsAsync(connectionModel.GroupId, pageSize, currentPage);
-        subgroups = subgroupsResult.Select(g => new SubgroupItem
+        subgroups = new List<SubgroupItem>();
+        foreach (var g in subgroupsResult)
         {
-            Id = g.Id,
-            Name = g.Name,
-            FullPath = g.FullPath,
-            Description = g.Description ?? "",
-            WebUrl = g.WebUrl
-        }).ToList();
+            var subgroup = new SubgroupItem
+            {
+                Id = g.Id,
+                Name = g.Name,
+                FullPath = g.FullPath,
+                Description = g.Description ?? "",
+                WebUrl = g.WebUrl
+            };
+            
+            try
+            {
+                var groupVars = await gitlabClient.GetGroupVariablesAsync(g.Id.ToString());
+                subgroup.Variables = new ProjectVariablesModel
+                {
+                    TotalVariables = groupVars.Count,
+                    ProtectedVariables = groupVars.Count(v => v.Protected),
+                    MaskedVariables = groupVars.Count(v => v.Masked),
+                    EnvironmentScopes = groupVars.Select(v => v.EnvironmentScope).Distinct().ToList(),
+                    Variables = groupVars.Select(v => new ProjectVariableModel
+                    {
+                        Key = v.Key,
+                        VariableType = v.VariableType,
+                        Protected = v.Protected,
+                        Masked = v.Masked,
+                        EnvironmentScope = v.EnvironmentScope,
+                        Description = v.Description
+                    }).ToList()
+                };
+            }
+            catch
+            {
+                // Ignore errors fetching group variables
+            }
+            
+            subgroups.Add(subgroup);
+        }
         hasMoreSubgroups = subgroupsResult.Count == pageSize;
     }
     
@@ -485,7 +695,8 @@ else if (analysisResult != null)
             Id = tabId,
             Title = subgroup.Name,
             Type = "group",
-            GroupId = subgroup.Id.ToString()
+            GroupId = subgroup.Id.ToString(),
+            Variables = subgroup.Variables
         };
         
         tabs.Add(tab);
@@ -529,14 +740,45 @@ else if (analysisResult != null)
             tab.HasMoreProjects = projectsResult.Count == pageSize;
             
             var subgroupsResult = await gitlabClient.GetSubgroupsAsync(tab.GroupId, pageSize, tab.CurrentPage);
-            tab.Subgroups = subgroupsResult.Select(g => new SubgroupItem
+            tab.Subgroups = new List<SubgroupItem>();
+            foreach (var g in subgroupsResult)
             {
-                Id = g.Id,
-                Name = g.Name,
-                FullPath = g.FullPath,
-                Description = g.Description ?? "",
-                WebUrl = g.WebUrl
-            }).ToList();
+                var subgroup = new SubgroupItem
+                {
+                    Id = g.Id,
+                    Name = g.Name,
+                    FullPath = g.FullPath,
+                    Description = g.Description ?? "",
+                    WebUrl = g.WebUrl
+                };
+                
+                try
+                {
+                    var groupVars = await gitlabClient.GetGroupVariablesAsync(g.Id.ToString());
+                    subgroup.Variables = new ProjectVariablesModel
+                    {
+                        TotalVariables = groupVars.Count,
+                        ProtectedVariables = groupVars.Count(v => v.Protected),
+                        MaskedVariables = groupVars.Count(v => v.Masked),
+                        EnvironmentScopes = groupVars.Select(v => v.EnvironmentScope).Distinct().ToList(),
+                        Variables = groupVars.Select(v => new ProjectVariableModel
+                        {
+                            Key = v.Key,
+                            VariableType = v.VariableType,
+                            Protected = v.Protected,
+                            Masked = v.Masked,
+                            EnvironmentScope = v.EnvironmentScope,
+                            Description = v.Description
+                        }).ToList()
+                    };
+                }
+                catch
+                {
+                    // Ignore errors fetching group variables
+                }
+                
+                tab.Subgroups.Add(subgroup);
+            }
             tab.HasMoreSubgroups = subgroupsResult.Count == pageSize;
         }
     }
@@ -581,6 +823,7 @@ else if (analysisResult != null)
         subgroups = null;
         analysisResult = null;
         groupName = null;
+        mainGroupVariables = null;
         errorMessage = null;
         currentPage = 1;
         tabs.Clear();
@@ -610,6 +853,13 @@ else if (analysisResult != null)
                 {
                     connectionModel.ServerUrl = saved.ServerUrl;
                     connectionModel.Token = saved.Token;
+                    connectionModel.DefaultGroupId = saved.DefaultGroupId;
+                    
+                    // Auto-populate GroupId with DefaultGroupId if not already set
+                    if (string.IsNullOrEmpty(connectionModel.GroupId) && !string.IsNullOrEmpty(saved.DefaultGroupId))
+                    {
+                        connectionModel.GroupId = saved.DefaultGroupId;
+                    }
                 }
             }
         }
@@ -626,5 +876,17 @@ else if (analysisResult != null)
             await JSRuntime.InvokeVoidAsync("navigator.clipboard.writeText", analysisResult.YamlContent);
             await JSRuntime.InvokeVoidAsync("alert", "YAML copied to clipboard!");
         }
+    }
+    
+    private void ShowVariables(ProjectVariablesModel variables)
+    {
+        selectedVariables = variables;
+        showVariablesModal = true;
+    }
+    
+    private void CloseVariablesModal()
+    {
+        showVariablesModal = false;
+        selectedVariables = null;
     }
 }

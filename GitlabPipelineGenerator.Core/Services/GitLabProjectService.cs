@@ -484,4 +484,45 @@ public class GitLabProjectService : IGitLabProjectService
             throw new Core.Exceptions.GitLabApiException($"Failed to get file content for '{filePath}' in project '{projectId}': {ex.Message}", ex);
         }
     }
+
+    /// <inheritdoc />
+    public async Task<ProjectVariablesInfo> GetProjectVariablesAsync(string projectIdOrPath, CancellationToken cancellationToken = default)
+    {
+        var client = await GetAuthenticatedClientAsync();
+
+        try
+        {
+            _logger.LogDebug("Getting project variables for project: {ProjectIdentifier}", projectIdOrPath);
+
+            var variables = await client.GetProjectVariablesAsync(projectIdOrPath);
+            
+            var result = new ProjectVariablesInfo
+            {
+                Variables = variables.Select(v => new ProjectVariableInfo
+                {
+                    Key = v.Key,
+                    VariableType = v.VariableType,
+                    Protected = v.Protected,
+                    Masked = v.Masked,
+                    Raw = v.Raw,
+                    EnvironmentScope = v.EnvironmentScope,
+                    Description = v.Description
+                }).ToList(),
+                Confidence = AnalysisConfidence.High
+            };
+
+            _logger.LogDebug("Retrieved {Count} project variables", result.TotalVariables);
+            return result;
+        }
+        catch (GitlabPipelineGenerator.GitLabApiClient.GitLabApiException ex) when (ex.StatusCode == System.Net.HttpStatusCode.Forbidden)
+        {
+            _logger.LogWarning("Access denied to project variables: {ProjectIdentifier}", projectIdOrPath);
+            return new ProjectVariablesInfo { Confidence = AnalysisConfidence.Low };
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Failed to get project variables for project: {ProjectIdentifier}", projectIdOrPath);
+            return new ProjectVariablesInfo { Confidence = AnalysisConfidence.Low };
+        }
+    }
 }

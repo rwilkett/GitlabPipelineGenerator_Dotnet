@@ -9,6 +9,7 @@ var builder = WebApplication.CreateBuilder(args);
 // Add services
 builder.Services.AddRazorPages();
 builder.Services.AddServerSideBlazor();
+builder.Services.AddSingleton<GitlabPipelineGenerator.Web.Services.LoadingService>();
 
 // Configure GitLab settings
 builder.Services.Configure<GitLabApiSettings>(options =>

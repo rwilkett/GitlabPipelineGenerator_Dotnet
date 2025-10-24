@@ -46,6 +46,11 @@ public class ProjectAnalysisResult
     public EnvironmentConfiguration? Environment { get; set; }
 
     /// <summary>
+    /// Project-level CI/CD variables
+    /// </summary>
+    public ProjectVariablesInfo? Variables { get; set; }
+
+    /// <summary>
     /// Overall analysis confidence
     /// </summary>
     public AnalysisConfidence Confidence { get; set; } = AnalysisConfidence.Low;

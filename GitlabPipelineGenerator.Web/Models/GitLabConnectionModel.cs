@@ -5,6 +5,7 @@ public class GitLabConnectionModel
     public string ServerUrl { get; set; } = "https://gitlab.com";
     public string Token { get; set; } = string.Empty;
     public string GroupId { get; set; } = string.Empty;
+    public string DefaultGroupId { get; set; } = string.Empty;
     public bool IsConnected { get; set; }
 }
 
@@ -32,6 +33,7 @@ public class SubgroupItem
     public string FullPath { get; set; } = string.Empty;
     public string Description { get; set; } = string.Empty;
     public string WebUrl { get; set; } = string.Empty;
+    public ProjectVariablesModel? Variables { get; set; }
 }
 
 public class AnalysisResultModel
@@ -46,4 +48,24 @@ public class AnalysisResultModel
     public string YamlContent { get; set; } = string.Empty;
     public bool Success { get; set; }
     public string ErrorMessage { get; set; } = string.Empty;
+    public ProjectVariablesModel? Variables { get; set; }
+}
+
+public class ProjectVariablesModel
+{
+    public int TotalVariables { get; set; }
+    public int ProtectedVariables { get; set; }
+    public int MaskedVariables { get; set; }
+    public List<string> EnvironmentScopes { get; set; } = new();
+    public List<ProjectVariableModel> Variables { get; set; } = new();
+}
+
+public class ProjectVariableModel
+{
+    public string Key { get; set; } = string.Empty;
+    public string VariableType { get; set; } = string.Empty;
+    public bool Protected { get; set; }
+    public bool Masked { get; set; }
+    public string EnvironmentScope { get; set; } = string.Empty;
+    public string? Description { get; set; }
 }

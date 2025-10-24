@@ -83,4 +83,12 @@ public interface IGitLabProjectService
     /// <param name="cancellationToken">Cancellation token</param>
     /// <returns>File content as string</returns>
     Task<string> GetFileContentAsync(int projectId, string filePath, string? branch = null, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Gets project-level CI/CD variables
+    /// </summary>
+    /// <param name="projectIdOrPath">Project ID or path</param>
+    /// <param name="cancellationToken">Cancellation token</param>
+    /// <returns>Project variables information</returns>
+    Task<ProjectVariablesInfo> GetProjectVariablesAsync(string projectIdOrPath, CancellationToken cancellationToken = default);
 }

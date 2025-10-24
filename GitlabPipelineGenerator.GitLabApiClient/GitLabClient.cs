@@ -147,6 +147,33 @@ public class GitLabClient : IDisposable
         return JsonSerializer.Deserialize<List<Group>>(json, _jsonOptions) ?? new List<Group>();
     }
 
+    public async Task<List<ProjectVariable>> GetProjectVariablesAsync(string projectIdOrPath)
+    {
+        var encodedPath = Uri.EscapeDataString(projectIdOrPath);
+        var response = await _httpClient.GetAsync($"{_baseUrl}/api/v4/projects/{encodedPath}/variables");
+        
+        if (!response.IsSuccessStatusCode)
+        {
+            throw new GitLabApiException($"Failed to get project variables: {response.StatusCode}", response.StatusCode);
+        }
+
+        var json = await response.Content.ReadAsStringAsync();
+        return JsonSerializer.Deserialize<List<ProjectVariable>>(json, _jsonOptions) ?? new List<ProjectVariable>();
+    }
+
+    public async Task<List<GroupVariable>> GetGroupVariablesAsync(string groupId)
+    {
+        var response = await _httpClient.GetAsync($"{_baseUrl}/api/v4/groups/{groupId}/variables");
+        
+        if (!response.IsSuccessStatusCode)
+        {
+            throw new GitLabApiException($"Failed to get group variables: {response.StatusCode}", response.StatusCode);
+        }
+
+        var json = await response.Content.ReadAsStringAsync();
+        return JsonSerializer.Deserialize<List<GroupVariable>>(json, _jsonOptions) ?? new List<GroupVariable>();
+    }
+
     public void Dispose()
     {
         _httpClient?.Dispose();

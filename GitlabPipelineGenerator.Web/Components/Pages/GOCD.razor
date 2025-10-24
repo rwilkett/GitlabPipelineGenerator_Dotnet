@@ -1,8 +1,10 @@
 @page "/gocd"
 @using GitlabPipelineGenerator.Web.Models
 @using GitlabPipelineGenerator.GOCDApiClient.Models
+@using GitlabPipelineGenerator.Web.Services
 @using ApiTask = GitlabPipelineGenerator.GOCDApiClient.Models.Task
 @inject IJSRuntime JSRuntime
+@inject LoadingService LoadingService
 
 <PageTitle>GOCD Connection</PageTitle>
 
@@ -336,6 +338,7 @@ else
     {
         isConnecting = true;
         errorMessage = null;
+        LoadingService.SetLoading(true, "Connecting to GOCD...");
 
         try
         {
@@ -343,6 +346,7 @@ else
                 ? new GitlabPipelineGenerator.GOCDApiClient.GOCDApiClient(connectionModel.ServerUrl, connectionModel.BearerToken!)
                 : new GitlabPipelineGenerator.GOCDApiClient.GOCDApiClient(connectionModel.ServerUrl, connectionModel.Username!, connectionModel.Password!);
 
+            LoadingService.SetLoading(true, "Loading pipeline groups...");
             groups = await client.GetPipelineGroupsAsync();
         }
         catch (Exception ex)
@@ -352,6 +356,7 @@ else
         finally
         {
             isConnecting = false;
+            LoadingService.SetLoading(false);
         }
     }
 

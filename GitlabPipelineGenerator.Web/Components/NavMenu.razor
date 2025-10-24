@@ -25,6 +25,11 @@
             </NavLink>
         </div>
         <div class="nav-item px-3">
+            <NavLink class="nav-link" href="reports">
+                <span class="oi oi-bar-chart" aria-hidden="true"></span> Reports
+            </NavLink>
+        </div>
+        <div class="nav-item px-3">
             <NavLink class="nav-link" href="settings">
                 <span class="oi oi-cog" aria-hidden="true"></span> Settings
             </NavLink>
@@ -44,6 +49,7 @@
 
     private void CollapseNavMenu()
     {
-        collapseNavMenu = true;
+        // Only collapse on mobile devices
+        collapseNavMenu = false;
     }
 }
