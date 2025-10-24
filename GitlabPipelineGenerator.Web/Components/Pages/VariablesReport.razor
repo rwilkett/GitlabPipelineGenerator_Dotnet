@@ -1,0 +1,345 @@
+@page "/reports/variables"
+@using GitlabPipelineGenerator.Web.Models
+@using GitlabPipelineGenerator.Web.Services
+@inject IJSRuntime JSRuntime
+@inject LoadingService LoadingService
+
+<PageTitle>CI/CD Variables by Group/Project</PageTitle>
+
+<h1>CI/CD Variables by Group/Project</h1>
+
+<div class="card">
+    <div class="card-body">
+        <p>Generate a report showing CI/CD variable counts for all subgroups and projects.</p>
+        <button class="btn btn-primary" @onclick="GenerateVariablesReport" disabled="@isGenerating">
+            @if (isGenerating)
+            {
+                <span class="spinner-border spinner-border-sm" role="status"></span>
+                <span>Generating...</span>
+            }
+            else
+            {
+                <span>Generate Report</span>
+            }
+        </button>
+    </div>
+</div>
+
+@if (variablesReport != null)
+{
+    <div class="mt-4">
+        <div class="alert alert-info">
+            <h4>@variablesReport.GroupName</h4>
+            <p><strong>Direct Variables:</strong> @variablesReport.TopLevelVariableCount</p>
+            <p><strong>Total Variables (including all subgroups/projects):</strong> @variablesReport.TotalVariableCount</p>
+        </div>
+        
+        @if (variablesReport.Groups.Any())
+        {
+            <div class="hierarchy-view border p-3">
+                @foreach (var group in variablesReport.Groups.OrderBy(g => g.FullPath))
+                {
+                    @RenderGroupHierarchy(group, 0)
+                }
+            </div>
+        }
+        else
+        {
+            <p class="text-muted">No subgroups or projects with CI/CD variables found.</p>
+        }
+        
+        <div class="mt-3">
+            <button class="btn btn-success me-2" @onclick="ExportVariablesReport">Export to CSV</button>
+            <button class="btn btn-primary" @onclick="ExportToExcel">Export to Excel</button>
+        </div>
+    </div>
+}
+
+@if (!string.IsNullOrEmpty(errorMessage))
+{
+    <div class="alert alert-danger mt-3">@errorMessage</div>
+}
+
+@code {
+    private VariablesReportModel? variablesReport;
+    private bool isGenerating = false;
+    private string? errorMessage;
+
+    private RenderFragment RenderGroupHierarchy(HierarchicalGroupSummary group, int level) => __builder =>
+    {
+        var indent = level * 20;
+        <div class="hierarchy-item" style="margin-left: @(indent)px;">
+            <div class="d-flex align-items-center mb-2">
+                @if (group.Subgroups.Any() || group.Projects.Any())
+                {
+                    <button class="btn btn-sm btn-outline-secondary me-2" @onclick="() => ToggleExpansion(group)">
+                        @(group.IsExpanded ? "−" : "+")
+                    </button>
+                }
+                else
+                {
+                    <span class="me-4"></span>
+                }
+                <strong>📁 @group.Name</strong>
+                <span class="ms-2 text-muted">(@group.FullPath)</span>
+                <span class="badge bg-primary ms-auto">@group.VariableCount direct | @group.TotalVariableCount total</span>
+            </div>
+            
+            @if (group.IsExpanded)
+            {
+                @if (group.Projects.Any())
+                {
+                    @foreach (var project in group.Projects.OrderBy(p => p.FullPath))
+                    {
+                        <div class="hierarchy-item" style="margin-left: @((level + 1) * 20)px;">
+                            <div class="d-flex align-items-center mb-1">
+                                <span class="me-4"></span>
+                                <span>📄 @project.Name</span>
+                                <span class="ms-2 text-muted">(@project.FullPath)</span>
+                                <span class="badge bg-secondary ms-auto">@project.VariableCount variables</span>
+                            </div>
+                        </div>
+                    }
+                }
+                
+                @if (group.Subgroups.Any())
+                {
+                    @foreach (var subgroup in group.Subgroups.OrderBy(g => g.FullPath))
+                    {
+                        @RenderGroupHierarchy(subgroup, level + 1)
+                    }
+                }
+            }
+        </div>
+    };
+
+    private void ToggleExpansion(HierarchicalGroupSummary group)
+    {
+        group.IsExpanded = !group.IsExpanded;
+    }
+
+    private async Task GenerateVariablesReport()
+    {
+        isGenerating = true;
+        errorMessage = null;
+        LoadingService.SetLoading(true, "Loading GitLab settings...");
+
+        try
+        {
+            var json = await JSRuntime.InvokeAsync<string>("localStorage.getItem", "gitlab-settings");
+            if (string.IsNullOrEmpty(json))
+            {
+                errorMessage = "No GitLab settings found. Please configure GitLab connection in Settings.";
+                return;
+            }
+
+            var settings = System.Text.Json.JsonSerializer.Deserialize<GitLabConnectionModel>(json);
+            if (settings == null || string.IsNullOrEmpty(settings.Token) || string.IsNullOrEmpty(settings.DefaultGroupId))
+            {
+                errorMessage = "GitLab token or default group ID not configured. Please check Settings.";
+                return;
+            }
+
+            LoadingService.SetLoading(true, "Connecting to GitLab...");
+            var client = new GitlabPipelineGenerator.GitLabApiClient.GitLabClient(settings.ServerUrl, settings.Token);
+            
+            LoadingService.SetLoading(true, "Loading group information...");
+            var group = await client.GetGroupAsync(settings.DefaultGroupId);
+            
+            var report = new VariablesReportModel 
+            { 
+                GroupName = group.Name,
+                GroupId = settings.DefaultGroupId
+            };
+            
+            // Get top-level group variables
+            try
+            {
+                var topLevelVars = await client.GetGroupVariablesAsync(settings.DefaultGroupId);
+                report.TopLevelVariableCount = topLevelVars.Count;
+            }
+            catch
+            {
+                report.TopLevelVariableCount = 0;
+            }
+            
+            LoadingService.SetLoading(true, "Loading subgroups...");
+            var subgroups = await client.GetSubgroupsAsync(settings.DefaultGroupId, 100, 1);
+            
+            foreach (var subgroup in subgroups)
+            {
+                var hierarchicalGroup = await BuildHierarchicalGroup(client, subgroup.Id.ToString(), subgroup.Name, subgroup.FullPath);
+                if (hierarchicalGroup.VariableCount > 0 || hierarchicalGroup.Subgroups.Any() || hierarchicalGroup.Projects.Any())
+                {
+                    report.Groups.Add(hierarchicalGroup);
+                }
+            }
+            
+            // Calculate total variable count for entire hierarchy
+            report.TotalVariableCount = report.TopLevelVariableCount + report.Groups.Sum(g => g.TotalVariableCount);
+            
+            variablesReport = report;
+        }
+        catch (Exception ex)
+        {
+            errorMessage = $"Error generating report: {ex.Message}";
+        }
+        finally
+        {
+            isGenerating = false;
+            LoadingService.SetLoading(false);
+        }
+    }
+
+    private async Task<HierarchicalGroupSummary> BuildHierarchicalGroup(GitlabPipelineGenerator.GitLabApiClient.GitLabClient client, string groupId, string name, string fullPath)
+    {
+        var group = new HierarchicalGroupSummary
+        {
+            Id = groupId,
+            Name = name,
+            FullPath = fullPath
+        };
+        
+        try
+        {
+            var variables = await client.GetGroupVariablesAsync(groupId);
+            group.VariableCount = variables.Count;
+        }
+        catch
+        {
+            group.VariableCount = 0;
+        }
+        
+        try
+        {
+            var projects = await client.GetGroupProjectsAsync(groupId, 100, 1);
+            foreach (var project in projects)
+            {
+                try
+                {
+                    var projectVars = await client.GetProjectVariablesAsync(project.Id.ToString());
+                    if (projectVars.Count > 0)
+                    {
+                        group.Projects.Add(new ProjectVariablesSummary
+                        {
+                            Name = project.Name,
+                            FullPath = project.PathWithNamespace,
+                            VariableCount = projectVars.Count
+                        });
+                    }
+                }
+                catch { }
+            }
+        }
+        catch { }
+        
+        try
+        {
+            var subgroups = await client.GetSubgroupsAsync(groupId, 100, 1);
+            foreach (var subgroup in subgroups)
+            {
+                var childGroup = await BuildHierarchicalGroup(client, subgroup.Id.ToString(), subgroup.Name, subgroup.FullPath);
+                if (childGroup.VariableCount > 0 || childGroup.Subgroups.Any() || childGroup.Projects.Any())
+                {
+                    group.Subgroups.Add(childGroup);
+                }
+            }
+        }
+        catch { }
+        
+        // Calculate total variable count (aggregated)
+        group.TotalVariableCount = group.VariableCount + 
+            group.Projects.Sum(p => p.VariableCount) + 
+            group.Subgroups.Sum(s => s.TotalVariableCount);
+        
+        return group;
+    }
+
+    private async Task ExportVariablesReport()
+    {
+        if (variablesReport == null) return;
+
+        var csv = new System.Text.StringBuilder();
+        csv.AppendLine("Type,Name,Full Path,Direct Variables,Total Variables");
+        
+        // Add top-level group to CSV
+        csv.AppendLine($"Top-Level Group,\"{variablesReport.GroupName}\",\"{variablesReport.GroupName}\",{variablesReport.TopLevelVariableCount},{variablesReport.TotalVariableCount}");
+        
+        foreach (var group in variablesReport.Groups)
+        {
+            ExportGroupToCsv(csv, group, "Group");
+        }
+
+        var fileName = $"gitlab-variables-report-{DateTime.Now:yyyyMMdd-HHmmss}.csv";
+        await JSRuntime.InvokeVoidAsync("downloadFile", fileName, csv.ToString(), "text/csv");
+    }
+    
+    private void ExportGroupToCsv(System.Text.StringBuilder csv, HierarchicalGroupSummary group, string type)
+    {
+        csv.AppendLine($"{type},\"{group.Name}\",\"{group.FullPath}\",{group.VariableCount},{group.TotalVariableCount}");
+        
+        foreach (var project in group.Projects)
+        {
+            csv.AppendLine($"Project,\"{project.Name}\",\"{project.FullPath}\",{project.VariableCount},{project.VariableCount}");
+        }
+        
+        foreach (var subgroup in group.Subgroups)
+        {
+            ExportGroupToCsv(csv, subgroup, "Group");
+        }
+    }
+    
+    private async Task ExportToExcel()
+    {
+        if (variablesReport == null) return;
+
+        var html = new System.Text.StringBuilder();
+        html.AppendLine("<html><head><meta charset='utf-8'><style>");
+        html.AppendLine("table { border-collapse: collapse; width: 100%; }");
+        html.AppendLine("th, td { border: 1px solid #000; padding: 8px; text-align: left; }");
+        html.AppendLine(".level-0 { background-color: #e6f3ff; font-weight: bold; }");
+        html.AppendLine(".level-1 { background-color: #f0f8ff; padding-left: 20px; }");
+        html.AppendLine(".level-2 { background-color: #f8fcff; padding-left: 40px; }");
+        html.AppendLine(".level-3 { background-color: #fcfeff; padding-left: 60px; }");
+        html.AppendLine(".project { font-style: italic; }");
+        html.AppendLine("</style></head><body>");
+        html.AppendLine($"<h1>CI/CD Variables Report</h1>");
+        html.AppendLine($"<h2>{variablesReport.GroupName}</h2>");
+        html.AppendLine($"<p><strong>Report Generated:</strong> {DateTime.Now:yyyy-MM-dd HH:mm:ss}</p>");
+        
+        html.AppendLine("<table>");
+        html.AppendLine("<tr><th>Type</th><th>Name</th><th>Full Path</th><th>Direct Variables</th><th>Total Variables</th></tr>");
+        
+        // Add top-level group row
+        html.AppendLine($"<tr class='level-0'><td>📁 Top-Level Group</td><td>{variablesReport.GroupName}</td><td>{variablesReport.GroupName}</td><td>{variablesReport.TopLevelVariableCount}</td><td>{variablesReport.TotalVariableCount}</td></tr>");
+        
+        foreach (var group in variablesReport.Groups)
+        {
+            ExportGroupToHtml(html, group, 1);
+        }
+        
+        html.AppendLine("</table></body></html>");
+
+        var fileName = $"gitlab-variables-report-{DateTime.Now:yyyyMMdd-HHmmss}.xls";
+        await JSRuntime.InvokeVoidAsync("downloadFile", fileName, html.ToString(), "application/vnd.ms-excel");
+    }
+    
+    private void ExportGroupToHtml(System.Text.StringBuilder html, HierarchicalGroupSummary group, int level)
+    {
+        var levelClass = $"level-{Math.Min(level, 3)}";
+        var indent = new string(' ', (level - 1) * 4);
+        
+        html.AppendLine($"<tr class='{levelClass}'><td>📁 Group</td><td>{indent}{group.Name}</td><td>{group.FullPath}</td><td>{group.VariableCount}</td><td>{group.TotalVariableCount}</td></tr>");
+        
+        foreach (var project in group.Projects.OrderBy(p => p.Name))
+        {
+            var projectIndent = new string(' ', level * 4);
+            html.AppendLine($"<tr class='level-{Math.Min(level + 1, 3)} project'><td>📄 Project</td><td>{projectIndent}{project.Name}</td><td>{project.FullPath}</td><td>{project.VariableCount}</td><td>{project.VariableCount}</td></tr>");
+        }
+        
+        foreach (var subgroup in group.Subgroups.OrderBy(g => g.Name))
+        {
+            ExportGroupToHtml(html, subgroup, level + 1);
+        }
+    }
+}
