@@ -174,6 +174,27 @@ public class GitLabClient : IDisposable
         return JsonSerializer.Deserialize<List<GroupVariable>>(json, _jsonOptions) ?? new List<GroupVariable>();
     }
 
+    public async Task<List<Pipeline>> GetProjectPipelinesAsync(string projectIdOrPath, DateTime startDate, DateTime endDate)
+    {
+        var encodedPath = Uri.EscapeDataString(projectIdOrPath);
+        var queryParams = new List<string>
+        {
+            $"updated_after={startDate:yyyy-MM-ddTHH:mm:ssZ}",
+            $"updated_before={endDate:yyyy-MM-ddTHH:mm:ssZ}",
+            "per_page=100"
+        };
+        var query = string.Join("&", queryParams);
+        var response = await _httpClient.GetAsync($"{_baseUrl}/api/v4/projects/{encodedPath}/pipelines?{query}");
+        
+        if (!response.IsSuccessStatusCode)
+        {
+            throw new GitLabApiException($"Failed to get project pipelines: {response.StatusCode}", response.StatusCode);
+        }
+
+        var json = await response.Content.ReadAsStringAsync();
+        return JsonSerializer.Deserialize<List<Pipeline>>(json, _jsonOptions) ?? new List<Pipeline>();
+    }
+
     public void Dispose()
     {
         _httpClient?.Dispose();
