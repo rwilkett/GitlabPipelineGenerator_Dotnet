@@ -1,7 +1,195 @@
 @page "/reports"
+@using GitlabPipelineGenerator.Web.Models
+@using GitlabPipelineGenerator.Web.Services
+@inject IJSRuntime JSRuntime
+@inject LoadingService LoadingService
 
 <PageTitle>Reports</PageTitle>
 
 <h1>Reports</h1>
 
-<p>Pipeline generation and analysis reports will be available here.</p>
+<div class="row">
+    <div class="col-md-6">
+        <div class="card">
+            <div class="card-header">
+                <h4>CI/CD Variables by Group/Project</h4>
+            </div>
+            <div class="card-body">
+                <p>Generate a report showing CI/CD variable counts for all subgroups and projects.</p>
+                <button class="btn btn-primary" @onclick="GenerateVariablesReport" disabled="@isGenerating">
+                    @if (isGenerating)
+                    {
+                        <span class="spinner-border spinner-border-sm" role="status"></span>
+                        <span>Generating...</span>
+                    }
+                    else
+                    {
+                        <span>Generate Report</span>
+                    }
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
+@if (variablesReport != null)
+{
+    <div class="mt-4">
+        <h2>CI/CD Variables by Group/Project</h2>
+        <p><strong>Top-level Group:</strong> @variablesReport.GroupName</p>
+        
+        @if (variablesReport.Groups.Any())
+        {
+            <h3>Subgroups</h3>
+            <table class="table table-striped">
+                <thead>
+                    <tr>
+                        <th>Group Name</th>
+                        <th>Full Path</th>
+                        <th>Variable Count</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @foreach (var group in variablesReport.Groups.OrderBy(g => g.FullPath))
+                    {
+                        <tr>
+                            <td>@group.Name</td>
+                            <td>@group.FullPath</td>
+                            <td>@group.VariableCount</td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        }
+        
+        @if (variablesReport.Projects.Any())
+        {
+            <h3>Projects</h3>
+            <table class="table table-striped">
+                <thead>
+                    <tr>
+                        <th>Project Name</th>
+                        <th>Full Path</th>
+                        <th>Variable Count</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @foreach (var project in variablesReport.Projects.OrderBy(p => p.FullPath))
+                    {
+                        <tr>
+                            <td>@project.Name</td>
+                            <td>@project.FullPath</td>
+                            <td>@project.VariableCount</td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        }
+    </div>
+}
+
+@if (!string.IsNullOrEmpty(errorMessage))
+{
+    <div class="alert alert-danger mt-3">@errorMessage</div>
+}
+
+@code {
+    private VariablesReportModel? variablesReport;
+    private bool isGenerating = false;
+    private string? errorMessage;
+
+    private async Task GenerateVariablesReport()
+    {
+        isGenerating = true;
+        errorMessage = null;
+        LoadingService.SetLoading(true, "Loading GitLab settings...");
+
+        try
+        {
+            var json = await JSRuntime.InvokeAsync<string>("localStorage.getItem", "gitlab-settings");
+            if (string.IsNullOrEmpty(json))
+            {
+                errorMessage = "No GitLab settings found. Please configure GitLab connection in Settings.";
+                return;
+            }
+
+            var settings = System.Text.Json.JsonSerializer.Deserialize<GitLabConnectionModel>(json);
+            if (settings == null || string.IsNullOrEmpty(settings.Token) || string.IsNullOrEmpty(settings.DefaultGroupId))
+            {
+                errorMessage = "GitLab token or default group ID not configured. Please check Settings.";
+                return;
+            }
+
+            LoadingService.SetLoading(true, "Connecting to GitLab...");
+            var client = new GitlabPipelineGenerator.GitLabApiClient.GitLabClient(settings.ServerUrl, settings.Token);
+            
+            LoadingService.SetLoading(true, "Loading group information...");
+            var group = await client.GetGroupAsync(settings.DefaultGroupId);
+            
+            var report = new VariablesReportModel { GroupName = group.Name };
+            
+            LoadingService.SetLoading(true, "Loading subgroups...");
+            var subgroups = await client.GetSubgroupsAsync(settings.DefaultGroupId, 100, 1);
+            
+            foreach (var subgroup in subgroups)
+            {
+                try
+                {
+                    var variables = await client.GetGroupVariablesAsync(subgroup.Id.ToString());
+                    report.Groups.Add(new GroupVariablesSummary
+                    {
+                        Name = subgroup.Name,
+                        FullPath = subgroup.FullPath,
+                        VariableCount = variables.Count
+                    });
+                }
+                catch
+                {
+                    report.Groups.Add(new GroupVariablesSummary
+                    {
+                        Name = subgroup.Name,
+                        FullPath = subgroup.FullPath,
+                        VariableCount = 0
+                    });
+                }
+            }
+            
+            LoadingService.SetLoading(true, "Loading projects...");
+            var projects = await client.GetGroupProjectsAsync(settings.DefaultGroupId, 100, 1);
+            
+            foreach (var project in projects)
+            {
+                try
+                {
+                    var variables = await client.GetProjectVariablesAsync(project.Id.ToString());
+                    report.Projects.Add(new ProjectVariablesSummary
+                    {
+                        Name = project.Name,
+                        FullPath = project.PathWithNamespace,
+                        VariableCount = variables.Count
+                    });
+                }
+                catch
+                {
+                    report.Projects.Add(new ProjectVariablesSummary
+                    {
+                        Name = project.Name,
+                        FullPath = project.PathWithNamespace,
+                        VariableCount = 0
+                    });
+                }
+            }
+            
+            variablesReport = report;
+        }
+        catch (Exception ex)
+        {
+            errorMessage = $"Error generating report: {ex.Message}";
+        }
+        finally
+        {
+            isGenerating = false;
+            LoadingService.SetLoading(false);
+        }
+    }
+}

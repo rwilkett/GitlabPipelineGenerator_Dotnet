@@ -69,3 +69,24 @@ public class ProjectVariableModel
     public string EnvironmentScope { get; set; } = string.Empty;
     public string? Description { get; set; }
 }
+
+public class VariablesReportModel
+{
+    public string GroupName { get; set; } = string.Empty;
+    public List<GroupVariablesSummary> Groups { get; set; } = new();
+    public List<ProjectVariablesSummary> Projects { get; set; } = new();
+}
+
+public class GroupVariablesSummary
+{
+    public string Name { get; set; } = string.Empty;
+    public string FullPath { get; set; } = string.Empty;
+    public int VariableCount { get; set; }
+}
+
+public class ProjectVariablesSummary
+{
+    public string Name { get; set; } = string.Empty;
+    public string FullPath { get; set; } = string.Empty;
+    public int VariableCount { get; set; }
+}
