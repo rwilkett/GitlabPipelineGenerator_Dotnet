@@ -1,0 +1,51 @@
+@using GitlabPipelineGenerator.Web.Models
+
+<div class="col-md-6 mb-3">
+    <div class="card" style="cursor: pointer;" @onclick="OnProjectClick">
+        <div class="card-body">
+            <h5 class="card-title">@Project.Name</h5>
+            <p class="card-text">
+                <strong>Path:</strong> @Project.FullPath<br>
+                @if (!string.IsNullOrEmpty(Project.Description))
+                {
+                    <strong>Description:</strong> @Project.Description<br>
+                }
+                <strong>URL:</strong> <a href="@Project.WebUrl" target="_blank" @onclick:stopPropagation="true">@Project.WebUrl</a>
+            </p>
+            <div class="d-flex gap-2">
+                <button class="btn btn-primary" @onclick="OnAnalyze" @onclick:stopPropagation="true" disabled="@IsAnalyzing">
+                    @if (IsAnalyzing && AnalyzingProject == Project.FullPath)
+                    {
+                        <span class="spinner-border spinner-border-sm" role="status"></span>
+                        <span>Analyzing...</span>
+                    }
+                    else
+                    {
+                        <span>Analyze Project</span>
+                    }
+                </button>
+                <button class="btn btn-outline-info btn-sm" @onclick="OnViewVariables" @onclick:stopPropagation="true" disabled="@IsLoadingVariables">
+                    @if (IsLoadingVariables && LoadingVariablesFor == Project.FullPath)
+                    {
+                        <span class="spinner-border spinner-border-sm" role="status"></span>
+                    }
+                    else
+                    {
+                        <span>Variables</span>
+                    }
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
+@code {
+    [Parameter] public ProjectItem Project { get; set; } = new();
+    [Parameter] public bool IsAnalyzing { get; set; }
+    [Parameter] public bool IsLoadingVariables { get; set; }
+    [Parameter] public string? AnalyzingProject { get; set; }
+    [Parameter] public string? LoadingVariablesFor { get; set; }
+    [Parameter] public EventCallback OnProjectClick { get; set; }
+    [Parameter] public EventCallback OnAnalyze { get; set; }
+    [Parameter] public EventCallback OnViewVariables { get; set; }
+}

@@ -15,56 +15,14 @@
 
 @if (projects == null && analysisResult == null && searchResults == null)
 {
-    <EditForm Model="connectionModel" OnValidSubmit="HandleConnect">
-        <DataAnnotationsValidator />
-        <ValidationSummary />
-
-        <div class="form-group mb-3">
-            <label for="token">GitLab Personal Access Token:</label>
-            <InputText id="token" type="password" class="form-control" @bind-Value="connectionModel.Token" />
-            <small class="form-text text-muted">Create a token at GitLab → User Settings → Access Tokens with 'read_api' and 'read_repository' scopes</small>
-        </div>
-
-        <div class="form-group mb-3">
-            <label for="groupId">Group ID:</label>
-            <InputText id="groupId" class="form-control" @bind-Value="connectionModel.GroupId" placeholder="e.g., 12345" />
-            <small class="form-text text-muted">Enter the GitLab group ID (numeric) to list projects from</small>
-        </div>
-
-        <button type="submit" class="btn btn-primary" disabled="@isConnecting">
-            @if (isConnecting)
-            {
-                <span class="spinner-border spinner-border-sm" role="status"></span>
-                <span>Connecting...</span>
-            }
-            else
-            {
-                <span>Connect to GitLab</span>
-            }
-        </button>
-    </EditForm>
-
-    <div class="mt-4">
-        <h3>Or Search Projects/Groups</h3>
-        <div class="input-group mb-3">
-            <InputText class="form-control" @bind-Value="searchTerm" placeholder="Search for projects or groups..." @onkeypress="HandleSearchKeyPress" />
-            <button class="btn btn-outline-secondary" @onclick="HandleSearch" disabled="@(isSearching || string.IsNullOrWhiteSpace(connectionModel.Token))">
-                @if (isSearching)
-                {
-                    <span class="spinner-border spinner-border-sm" role="status"></span>
-                    <span>Searching...</span>
-                }
-                else
-                {
-                    <span>Search</span>
-                }
-            </button>
-        </div>
-        @if (string.IsNullOrWhiteSpace(connectionModel.Token))
-        {
-            <small class="text-muted">Enter your GitLab token above to enable search</small>
-        }
-    </div>
+    <GitLabConnectionForm 
+        ConnectionModel="connectionModel" 
+        IsConnecting="isConnecting" 
+        IsSearching="isSearching" 
+        @bind-SearchTerm="searchTerm" 
+        OnConnect="HandleConnect" 
+        OnSearch="HandleSearch" 
+        OnSearchKeyPress="HandleSearchKeyPress" />
 
     @if (!string.IsNullOrEmpty(errorMessage))
     {
@@ -142,24 +100,11 @@ else if ((projects != null || searchResults != null) && analysisResult == null)
             <div class="row mb-4">
                 @foreach (var group in searchResults.Groups)
                 {
-                    <div class="col-md-6 mb-3">
-                        <div class="card border-info" style="cursor: pointer;" @onclick="() => ConnectToGroup(group.Id.ToString(), group.Name)">
-                            <div class="card-body">
-                                <h5 class="card-title">📁 @group.Name</h5>
-                                <p class="card-text">
-                                    <strong>Path:</strong> @group.FullPath<br>
-                                    @if (!string.IsNullOrEmpty(group.Description))
-                                    {
-                                        <strong>Description:</strong> @group.Description<br>
-                                    }
-                                    <strong>URL:</strong> <a href="@group.WebUrl" target="_blank" @onclick:stopPropagation="true">@group.WebUrl</a>
-                                </p>
-                                <button class="btn btn-primary" @onclick="() => ConnectToGroup(group.Id.ToString(), group.Name)" @onclick:stopPropagation="true">
-                                    Browse Group
-                                </button>
-                            </div>
-                        </div>
-                    </div>
+                    <GroupCard 
+                        Group="@(new SubgroupItem { Id = group.Id, Name = group.Name, FullPath = group.FullPath, Description = group.Description, WebUrl = group.WebUrl })" 
+                        ShowVariables="false" 
+                        ShowBrowseButton="true" 
+                        OnGroupClick="() => ConnectToGroup(group.Id.ToString(), group.Name)" />
                 }
             </div>
         }
@@ -169,34 +114,13 @@ else if ((projects != null || searchResults != null) && analysisResult == null)
             <div class="row mb-4">
                 @foreach (var subgroup in subgroups)
                 {
-                    <div class="col-md-6 mb-3">
-                        <div class="card border-info" style="cursor: pointer;" @onclick="() => OpenSubgroupTab(subgroup)">
-                            <div class="card-body">
-                                <h5 class="card-title">📁 @subgroup.Name</h5>
-                                <p class="card-text">
-                                    <strong>Path:</strong> @subgroup.FullPath<br>
-                                    @if (!string.IsNullOrEmpty(subgroup.Description))
-                                    {
-                                        <strong>Description:</strong> @subgroup.Description<br>
-                                    }
-                                    <strong>URL:</strong> <a href="@subgroup.WebUrl" target="_blank" @onclick:stopPropagation="true">@subgroup.WebUrl</a><br>
-                                    @if (subgroup.Variables != null && subgroup.Variables.TotalVariables > 0)
-                                    {
-                                        <strong>CI/CD Variables:</strong> @subgroup.Variables.TotalVariables
-                                        @if (subgroup.Variables.ProtectedVariables > 0)
-                                        {
-                                            <span class="badge bg-warning ms-1">@subgroup.Variables.ProtectedVariables Protected</span>
-                                        }
-                                        @if (subgroup.Variables.MaskedVariables > 0)
-                                        {
-                                            <span class="badge bg-secondary ms-1">@subgroup.Variables.MaskedVariables Masked</span>
-                                        }
-                                        <br><button class="btn btn-sm btn-outline-info mt-2" @onclick="() => ShowVariables(subgroup.Variables)" @onclick:stopPropagation="true">View Variables</button>
-                                    }
-                                </p>
-                            </div>
-                        </div>
-                    </div>
+                    <GroupCard 
+                        Group="subgroup" 
+                        Variables="subgroup.Variables" 
+                        ShowVariables="true" 
+                        ShowBrowseButton="false" 
+                        OnGroupClick="() => OpenSubgroupTab(subgroup)" 
+                        OnViewVariables="() => ShowVariables(subgroup.Variables)" />
                 }
             </div>
         }
@@ -207,44 +131,15 @@ else if ((projects != null || searchResults != null) && analysisResult == null)
             <div class="row">
                 @foreach (var project in (searchResults?.Projects ?? projects ?? new List<ProjectItem>()))
                 {
-                    <div class="col-md-6 mb-3">
-                        <div class="card" style="cursor: pointer;" @onclick="() => OpenProjectTab(project)">
-                            <div class="card-body">
-                                <h5 class="card-title">@project.Name</h5>
-                                <p class="card-text">
-                                    <strong>Path:</strong> @project.FullPath<br>
-                                    @if (!string.IsNullOrEmpty(project.Description))
-                                    {
-                                        <strong>Description:</strong> @project.Description<br>
-                                    }
-                                    <strong>URL:</strong> <a href="@project.WebUrl" target="_blank" @onclick:stopPropagation="true">@project.WebUrl</a>
-                                </p>
-                                <div class="d-flex gap-2">
-                                    <button class="btn btn-primary" @onclick="() => AnalyzeProject(project.FullPath, project.Name)" @onclick:stopPropagation="true" disabled="@isAnalyzing">
-                                        @if (isAnalyzing && analyzingProject == project.FullPath)
-                                        {
-                                            <span class="spinner-border spinner-border-sm" role="status"></span>
-                                            <span>Analyzing...</span>
-                                        }
-                                        else
-                                        {
-                                            <span>Analyze Project</span>
-                                        }
-                                    </button>
-                                    <button class="btn btn-outline-info btn-sm" @onclick="() => ViewProjectVariables(project.FullPath, project.Name)" @onclick:stopPropagation="true" disabled="@isLoadingVariables">
-                                        @if (isLoadingVariables && loadingVariablesFor == project.FullPath)
-                                        {
-                                            <span class="spinner-border spinner-border-sm" role="status"></span>
-                                        }
-                                        else
-                                        {
-                                            <span>Variables</span>
-                                        }
-                                    </button>
-                                </div>
-                            </div>
-                        </div>
-                    </div>
+                    <ProjectCard 
+                        Project="project" 
+                        IsAnalyzing="isAnalyzing" 
+                        IsLoadingVariables="isLoadingVariables" 
+                        AnalyzingProject="analyzingProject" 
+                        LoadingVariablesFor="loadingVariablesFor" 
+                        OnProjectClick="() => OpenProjectTab(project)" 
+                        OnAnalyze="() => AnalyzeProject(project.FullPath, project.Name)" 
+                        OnViewVariables="() => ViewProjectVariables(project.FullPath, project.Name)" />
                 }
             </div>
         }
@@ -402,142 +297,10 @@ else if ((projects != null || searchResults != null) && analysisResult == null)
 }
 else if (analysisResult != null)
 {
-    <h1>Analysis Results</h1>
-    
-    <button class="btn btn-secondary mb-3" @onclick="BackToProjects">← Back to Projects</button>
-
-    @if (analysisResult.Success)
-    {
-        <h2>Project: @analysisResult.ProjectName</h2>
-        
-        <div class="mb-4">
-            <h3>Detected Configuration</h3>
-            <p><strong>Project Type:</strong> @analysisResult.DetectedType</p>
-            <p><strong>Framework:</strong> @analysisResult.Framework</p>
-            <p><strong>Build Tool:</strong> @analysisResult.BuildTool</p>
-            @if (!string.IsNullOrEmpty(analysisResult.Version))
-            {
-                <p><strong>Version:</strong> @analysisResult.Version</p>
-            }
-            
-            @if (analysisResult.BuildCommands.Any())
-            {
-                <p><strong>Build Commands:</strong></p>
-                <ul>
-                    @foreach (var cmd in analysisResult.BuildCommands)
-                    {
-                        <li><code>@cmd</code></li>
-                    }
-                </ul>
-            }
-            
-            @if (analysisResult.TestCommands.Any())
-            {
-                <p><strong>Test Commands:</strong></p>
-                <ul>
-                    @foreach (var cmd in analysisResult.TestCommands)
-                    {
-                        <li><code>@cmd</code></li>
-                    }
-                </ul>
-            }
-            
-            @if (analysisResult.Variables != null && analysisResult.Variables.TotalVariables > 0)
-            {
-                <p><strong>CI/CD Variables:</strong> @analysisResult.Variables.TotalVariables total</p>
-                @if (analysisResult.Variables.ProtectedVariables > 0)
-                {
-                    <p><strong>Protected Variables:</strong> @analysisResult.Variables.ProtectedVariables</p>
-                }
-                @if (analysisResult.Variables.MaskedVariables > 0)
-                {
-                    <p><strong>Masked Variables:</strong> @analysisResult.Variables.MaskedVariables</p>
-                }
-                @if (analysisResult.Variables.EnvironmentScopes.Count > 1)
-                {
-                    <p><strong>Environment Scopes:</strong> @string.Join(", ", analysisResult.Variables.EnvironmentScopes)</p>
-                }
-            }
-        </div>
-        
-        <h3>Generated GitLab CI/CD Pipeline</h3>
-        <div class="yaml-output border p-3 bg-light" style="max-height: 400px; overflow-y: auto; font-family: 'Courier New', monospace; white-space: pre-wrap;">@analysisResult.YamlContent</div>
-        
-        <div class="mt-3">
-            <button class="btn btn-success" @onclick="CopyToClipboard">Copy YAML to Clipboard</button>
-        </div>
-    }
-    else
-    {
-        <div class="alert alert-danger">
-            <h3>Analysis Failed</h3>
-            <p>@analysisResult.ErrorMessage</p>
-        </div>
-    }
+    <AnalysisResults Result="analysisResult" OnBackToProjects="BackToProjects" />
 }
 
-<!-- Variables Modal -->
-@if (showVariablesModal && selectedVariables != null)
-{
-    <div class="modal show d-block" tabindex="-1" style="background-color: rgba(0,0,0,0.5);">
-        <div class="modal-dialog modal-lg">
-            <div class="modal-content">
-                <div class="modal-header">
-                    <h5 class="modal-title">CI/CD Variables</h5>
-                    <button type="button" class="btn-close" @onclick="CloseVariablesModal"></button>
-                </div>
-                <div class="modal-body">
-                    <div class="table-responsive">
-                        <table class="table table-striped">
-                            <thead>
-                                <tr>
-                                    <th>Key</th>
-                                    <th>Value</th>
-                                    <th>Environment</th>
-                                    <th>Type</th>
-                                    <th>Flags</th>
-                                </tr>
-                            </thead>
-                            <tbody>
-                                @foreach (var variable in selectedVariables.Variables)
-                                {
-                                    <tr>
-                                        <td><code>@variable.Key</code></td>
-                                        <td>
-                                            @if (variable.Masked)
-                                            {
-                                                <span class="text-muted">***masked***</span>
-                                            }
-                                            else
-                                            {
-                                                <code>@(string.IsNullOrEmpty(variable.Description) ? "[value hidden]" : variable.Description)</code>
-                                            }
-                                        </td>
-                                        <td><span class="badge bg-light text-dark">@variable.EnvironmentScope</span></td>
-                                        <td><span class="badge bg-info">@variable.VariableType</span></td>
-                                        <td>
-                                            @if (variable.Protected)
-                                            {
-                                                <span class="badge bg-warning">Protected</span>
-                                            }
-                                            @if (variable.Masked)
-                                            {
-                                                <span class="badge bg-secondary">Masked</span>
-                                            }
-                                        </td>
-                                    </tr>
-                                }
-                            </tbody>
-                        </table>
-                    </div>
-                </div>
-                <div class="modal-footer">
-                    <button type="button" class="btn btn-secondary" @onclick="CloseVariablesModal">Close</button>
-                </div>
-            </div>
-        </div>
-    </div>
-}
+<VariablesModal Show="showVariablesModal" Variables="selectedVariables" OnClose="CloseVariablesModal" />
 
 @code {
     private GitLabConnectionModel connectionModel = new();
@@ -981,14 +744,7 @@ else if (analysisResult != null)
         }
     }
 
-    private async System.Threading.Tasks.Task CopyToClipboard()
-    {
-        if (analysisResult?.YamlContent != null)
-        {
-            await JSRuntime.InvokeVoidAsync("navigator.clipboard.writeText", analysisResult.YamlContent);
-            await JSRuntime.InvokeVoidAsync("alert", "YAML copied to clipboard!");
-        }
-    }
+
     
     private void ShowVariables(ProjectVariablesModel variables)
     {

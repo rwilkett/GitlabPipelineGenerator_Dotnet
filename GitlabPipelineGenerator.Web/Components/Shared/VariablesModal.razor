@@ -1,0 +1,69 @@
+@using GitlabPipelineGenerator.Web.Models
+
+@if (Show && Variables != null)
+{
+    <div class="modal show d-block" tabindex="-1" style="background-color: rgba(0,0,0,0.5);">
+        <div class="modal-dialog modal-lg">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title">CI/CD Variables</h5>
+                    <button type="button" class="btn-close" @onclick="OnClose"></button>
+                </div>
+                <div class="modal-body">
+                    <div class="table-responsive">
+                        <table class="table table-striped">
+                            <thead>
+                                <tr>
+                                    <th>Key</th>
+                                    <th>Value</th>
+                                    <th>Environment</th>
+                                    <th>Type</th>
+                                    <th>Flags</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                @foreach (var variable in Variables.Variables)
+                                {
+                                    <tr>
+                                        <td><code>@variable.Key</code></td>
+                                        <td>
+                                            @if (variable.Masked)
+                                            {
+                                                <span class="text-muted">***masked***</span>
+                                            }
+                                            else
+                                            {
+                                                <code>@(string.IsNullOrEmpty(variable.Description) ? "[value hidden]" : variable.Description)</code>
+                                            }
+                                        </td>
+                                        <td><span class="badge bg-light text-dark">@variable.EnvironmentScope</span></td>
+                                        <td><span class="badge bg-info">@variable.VariableType</span></td>
+                                        <td>
+                                            @if (variable.Protected)
+                                            {
+                                                <span class="badge bg-warning">Protected</span>
+                                            }
+                                            @if (variable.Masked)
+                                            {
+                                                <span class="badge bg-secondary">Masked</span>
+                                            }
+                                        </td>
+                                    </tr>
+                                }
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" @onclick="OnClose">Close</button>
+                </div>
+            </div>
+        </div>
+    </div>
+}
+
+@code {
+    [Parameter] public bool Show { get; set; }
+    [Parameter] public ProjectVariablesModel? Variables { get; set; }
+    [Parameter] public EventCallback OnClose { get; set; }
+}
