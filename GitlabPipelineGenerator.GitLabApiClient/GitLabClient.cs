@@ -235,6 +235,19 @@ public class GitLabClient : IDisposable
         return JsonSerializer.Deserialize<List<Group>>(json, _jsonOptions) ?? new List<Group>();
     }
 
+    public async Task<List<SamlGroupLink>> GetGroupSamlLinksAsync(string groupId)
+    {
+        var response = await _httpClient.GetAsync($"{_baseUrl}/api/v4/groups/{groupId}/saml_group_links");
+        
+        if (!response.IsSuccessStatusCode)
+        {
+            throw new GitLabApiException($"Failed to get SAML group links: {response.StatusCode}", response.StatusCode);
+        }
+
+        var json = await response.Content.ReadAsStringAsync();
+        return JsonSerializer.Deserialize<List<SamlGroupLink>>(json, _jsonOptions) ?? new List<SamlGroupLink>();
+    }
+
     public void Dispose()
     {
         _httpClient?.Dispose();

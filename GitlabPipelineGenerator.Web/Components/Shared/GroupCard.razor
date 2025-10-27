@@ -22,14 +22,28 @@
                     {
                         <span class="badge bg-secondary ms-1">@Variables.MaskedVariables Masked</span>
                     }
-                    <br><button class="btn btn-sm btn-outline-info mt-2" @onclick="OnViewVariables" @onclick:stopPropagation="true">View Variables</button>
+                    <br>
+                    <div class="d-flex gap-1 mt-2">
+                        <button class="btn btn-sm btn-outline-info" @onclick="OnViewVariables" @onclick:stopPropagation="true">Variables</button>
+                        <button class="btn btn-sm btn-outline-secondary" @onclick="OnViewSamlLinks" @onclick:stopPropagation="true">SAML Links</button>
+                    </div>
+                }
+                @if (ShowVariables && (Variables == null || Variables.TotalVariables == 0))
+                {
+                    <br>
+                    <button class="btn btn-sm btn-outline-secondary mt-2" @onclick="OnViewSamlLinks" @onclick:stopPropagation="true">SAML Links</button>
                 }
             </p>
             @if (ShowBrowseButton)
             {
-                <button class="btn btn-primary" @onclick="OnGroupClick" @onclick:stopPropagation="true">
-                    Browse Group
-                </button>
+                <div class="d-flex gap-2 mt-2">
+                    <button class="btn btn-primary" @onclick="OnGroupClick" @onclick:stopPropagation="true">
+                        Browse Group
+                    </button>
+                    <button class="btn btn-outline-secondary" @onclick="OnViewSamlLinks" @onclick:stopPropagation="true">
+                        SAML Links
+                    </button>
+                </div>
             }
         </div>
     </div>
@@ -42,4 +56,5 @@
     [Parameter] public bool ShowBrowseButton { get; set; } = false;
     [Parameter] public EventCallback OnGroupClick { get; set; }
     [Parameter] public EventCallback OnViewVariables { get; set; }
+    [Parameter] public EventCallback OnViewSamlLinks { get; set; }
 }

@@ -1,0 +1,54 @@
+@using GitlabPipelineGenerator.Web.Models
+
+@if (Show && SamlLinks != null)
+{
+    <div class="modal show d-block" tabindex="-1" style="background-color: rgba(0,0,0,0.5);">
+        <div class="modal-dialog modal-lg">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title">SAML Group Links</h5>
+                    <button type="button" class="btn-close" @onclick="OnClose"></button>
+                </div>
+                <div class="modal-body">
+                    @if (SamlLinks.Any())
+                    {
+                        <div class="table-responsive">
+                            <table class="table table-striped">
+                                <thead>
+                                    <tr>
+                                        <th>SAML Group Name</th>
+                                        <th>Access Level</th>
+                                        <th>Provider</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    @foreach (var link in SamlLinks)
+                                    {
+                                        <tr>
+                                            <td><code>@link.SamlGroupName</code></td>
+                                            <td><span class="badge bg-primary">@link.AccessLevel</span></td>
+                                            <td>@(string.IsNullOrEmpty(link.ProviderName) ? "-" : link.ProviderName)</td>
+                                        </tr>
+                                    }
+                                </tbody>
+                            </table>
+                        </div>
+                    }
+                    else
+                    {
+                        <p class="text-muted">No SAML group links configured for this group.</p>
+                    }
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" @onclick="OnClose">Close</button>
+                </div>
+            </div>
+        </div>
+    </div>
+}
+
+@code {
+    [Parameter] public bool Show { get; set; }
+    [Parameter] public List<SamlGroupLinkModel>? SamlLinks { get; set; }
+    [Parameter] public EventCallback OnClose { get; set; }
+}

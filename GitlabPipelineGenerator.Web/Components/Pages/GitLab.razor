@@ -104,7 +104,8 @@ else if ((projects != null || searchResults != null) && analysisResult == null)
                         Group="@(new SubgroupItem { Id = group.Id, Name = group.Name, FullPath = group.FullPath, Description = group.Description, WebUrl = group.WebUrl })" 
                         ShowVariables="false" 
                         ShowBrowseButton="true" 
-                        OnGroupClick="() => ConnectToGroup(group.Id.ToString(), group.Name)" />
+                        OnGroupClick="() => ConnectToGroup(group.Id.ToString(), group.Name)" 
+                        OnViewSamlLinks="() => ViewSamlLinks(group.Id.ToString(), group.Name)" />
                 }
             </div>
         }
@@ -120,7 +121,8 @@ else if ((projects != null || searchResults != null) && analysisResult == null)
                         ShowVariables="true" 
                         ShowBrowseButton="false" 
                         OnGroupClick="() => OpenSubgroupTab(subgroup)" 
-                        OnViewVariables="() => ShowVariables(subgroup.Variables)" />
+                        OnViewVariables="() => ShowVariables(subgroup.Variables)" 
+                        OnViewSamlLinks="() => ViewSamlLinks(subgroup.Id.ToString(), subgroup.Name)" />
                 }
             </div>
         }
@@ -301,6 +303,7 @@ else if (analysisResult != null)
 }
 
 <VariablesModal Show="showVariablesModal" Variables="selectedVariables" OnClose="CloseVariablesModal" />
+<SamlGroupLinksModal Show="showSamlLinksModal" SamlLinks="selectedSamlLinks" OnClose="CloseSamlLinksModal" />
 
 @code {
     private GitLabConnectionModel connectionModel = new();
@@ -329,6 +332,8 @@ else if (analysisResult != null)
     private int tabCounter = 0;
     private bool showVariablesModal = false;
     private ProjectVariablesModel? selectedVariables;
+    private bool showSamlLinksModal = false;
+    private List<SamlGroupLinkModel>? selectedSamlLinks;
     
     public class TabItem
     {
@@ -758,6 +763,49 @@ else if (analysisResult != null)
         selectedVariables = null;
     }
     
+    private async Task ViewSamlLinks(string groupId, string groupName)
+    {
+        try
+        {
+            var gitlabClient = new GitlabPipelineGenerator.GitLabApiClient.GitLabClient(
+                connectionModel.ServerUrl, 
+                connectionModel.Token);
+            
+            var samlLinks = await gitlabClient.GetGroupSamlLinksAsync(groupId);
+            selectedSamlLinks = samlLinks.Select(link => new SamlGroupLinkModel
+            {
+                SamlGroupName = link.SamlGroupName,
+                AccessLevel = GetAccessLevelName(link.AccessLevel),
+                ProviderName = link.Provider
+            }).ToList();
+            
+            showSamlLinksModal = true;
+        }
+        catch (Exception ex)
+        {
+            errorMessage = $"Failed to load SAML links for {groupName}: {ex.Message}";
+        }
+    }
+    
+    private void CloseSamlLinksModal()
+    {
+        showSamlLinksModal = false;
+        selectedSamlLinks = null;
+    }
+    
+    private string GetAccessLevelName(int accessLevel)
+    {
+        return accessLevel switch
+        {
+            10 => "Guest",
+            20 => "Reporter",
+            30 => "Developer",
+            40 => "Maintainer",
+            50 => "Owner",
+            _ => accessLevel.ToString()
+        };
+    }
+    
     private void ClearSearch()
     {
         searchResults = null;
@@ -904,6 +952,7 @@ else if (analysisResult != null)
                 Variables = projectVars.Select(v => new ProjectVariableModel
                 {
                     Key = v.Key,
+                    Value = v.Value,
                     VariableType = v.VariableType,
                     Protected = v.Protected,
                     Masked = v.Masked,

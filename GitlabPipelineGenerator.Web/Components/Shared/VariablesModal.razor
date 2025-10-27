@@ -16,6 +16,7 @@
                                 <tr>
                                     <th>Key</th>
                                     <th>Value</th>
+                                    <th>Description</th>
                                     <th>Environment</th>
                                     <th>Type</th>
                                     <th>Flags</th>
@@ -27,15 +28,9 @@
                                     <tr>
                                         <td><code>@variable.Key</code></td>
                                         <td>
-                                            @if (variable.Masked)
-                                            {
-                                                <span class="text-muted">***masked***</span>
-                                            }
-                                            else
-                                            {
-                                                <code>@(string.IsNullOrEmpty(variable.Description) ? "[value hidden]" : variable.Description)</code>
-                                            }
+                                            <code>@(string.IsNullOrEmpty(variable.Value) ? "[no value]" : variable.Value)</code>
                                         </td>
+                                        <td>@(string.IsNullOrEmpty(variable.Description) ? "-" : variable.Description)</td>
                                         <td><span class="badge bg-light text-dark">@variable.EnvironmentScope</span></td>
                                         <td><span class="badge bg-info">@variable.VariableType</span></td>
                                         <td>
