@@ -195,6 +195,46 @@ public class GitLabClient : IDisposable
         return JsonSerializer.Deserialize<List<Pipeline>>(json, _jsonOptions) ?? new List<Pipeline>();
     }
 
+    public async Task<List<Project>> SearchProjectsAsync(string search, int perPage = 20, int page = 1)
+    {
+        var queryParams = new List<string> 
+        { 
+            $"search={Uri.EscapeDataString(search)}",
+            $"per_page={perPage}", 
+            $"page={page}" 
+        };
+        var query = string.Join("&", queryParams);
+        var response = await _httpClient.GetAsync($"{_baseUrl}/api/v4/projects?{query}");
+        
+        if (!response.IsSuccessStatusCode)
+        {
+            throw new GitLabApiException($"Failed to search projects: {response.StatusCode}", response.StatusCode);
+        }
+
+        var json = await response.Content.ReadAsStringAsync();
+        return JsonSerializer.Deserialize<List<Project>>(json, _jsonOptions) ?? new List<Project>();
+    }
+
+    public async Task<List<Group>> SearchGroupsAsync(string search, int perPage = 20, int page = 1)
+    {
+        var queryParams = new List<string> 
+        { 
+            $"search={Uri.EscapeDataString(search)}",
+            $"per_page={perPage}", 
+            $"page={page}" 
+        };
+        var query = string.Join("&", queryParams);
+        var response = await _httpClient.GetAsync($"{_baseUrl}/api/v4/groups?{query}");
+        
+        if (!response.IsSuccessStatusCode)
+        {
+            throw new GitLabApiException($"Failed to search groups: {response.StatusCode}", response.StatusCode);
+        }
+
+        var json = await response.Content.ReadAsStringAsync();
+        return JsonSerializer.Deserialize<List<Group>>(json, _jsonOptions) ?? new List<Group>();
+    }
+
     public void Dispose()
     {
         _httpClient?.Dispose();
