@@ -512,7 +512,7 @@ public class GitLabFallbackServiceTests
     #region Cache Management Tests
 
     [Fact]
-    public void ClearCache_WithSpecificProjectId_ShouldClearOnlyThatProject()
+    public async Task ClearCache_WithSpecificProjectId_ShouldClearOnlyThatProject()
     {
         // Arrange
         var projectId1 = "project1";
@@ -524,8 +524,8 @@ public class GitLabFallbackServiceTests
         var partialAnalysisOperation = new Func<CachedAnalysisResult?, CancellationToken, Task<ProjectAnalysisResult>>(
             (cached, ct) => Task.FromResult(analysisResult));
 
-        _fallbackService.ExecuteAnalysisWithFallbackAsync(projectId1, analysisOperation, partialAnalysisOperation).Wait();
-        _fallbackService.ExecuteAnalysisWithFallbackAsync(projectId2, analysisOperation, partialAnalysisOperation).Wait();
+        await _fallbackService.ExecuteAnalysisWithFallbackAsync(projectId1, analysisOperation, partialAnalysisOperation);
+        await _fallbackService.ExecuteAnalysisWithFallbackAsync(projectId2, analysisOperation, partialAnalysisOperation);
 
         var initialStats = _fallbackService.GetCacheStatistics();
         initialStats.TotalEntries.Should().Be(2);
@@ -541,7 +541,7 @@ public class GitLabFallbackServiceTests
     }
 
     [Fact]
-    public void ClearCache_WithNullProjectId_ShouldClearAllCache()
+    public async Task ClearCache_WithNullProjectId_ShouldClearAllCache()
     {
         // Arrange
         var projectId1 = "project1";
@@ -553,8 +553,8 @@ public class GitLabFallbackServiceTests
         var partialAnalysisOperation = new Func<CachedAnalysisResult?, CancellationToken, Task<ProjectAnalysisResult>>(
             (cached, ct) => Task.FromResult(analysisResult));
 
-        _fallbackService.ExecuteAnalysisWithFallbackAsync(projectId1, analysisOperation, partialAnalysisOperation).Wait();
-        _fallbackService.ExecuteAnalysisWithFallbackAsync(projectId2, analysisOperation, partialAnalysisOperation).Wait();
+        await _fallbackService.ExecuteAnalysisWithFallbackAsync(projectId1, analysisOperation, partialAnalysisOperation);
+        await _fallbackService.ExecuteAnalysisWithFallbackAsync(projectId2, analysisOperation, partialAnalysisOperation);
 
         var initialStats = _fallbackService.GetCacheStatistics();
         initialStats.TotalEntries.Should().Be(2);
@@ -582,7 +582,7 @@ public class GitLabFallbackServiceTests
     }
 
     [Fact]
-    public void GetCacheStatistics_WithCachedData_ShouldReturnCorrectStats()
+    public async Task GetCacheStatistics_WithCachedData_ShouldReturnCorrectStats()
     {
         // Arrange
         var projectId = "test-project";
@@ -591,7 +591,7 @@ public class GitLabFallbackServiceTests
         var partialAnalysisOperation = new Func<CachedAnalysisResult?, CancellationToken, Task<ProjectAnalysisResult>>(
             (cached, ct) => Task.FromResult(analysisResult));
 
-        _fallbackService.ExecuteAnalysisWithFallbackAsync(projectId, analysisOperation, partialAnalysisOperation).Wait();
+        await _fallbackService.ExecuteAnalysisWithFallbackAsync(projectId, analysisOperation, partialAnalysisOperation);
 
         // Act
         var stats = _fallbackService.GetCacheStatistics();

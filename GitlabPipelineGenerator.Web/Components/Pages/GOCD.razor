@@ -75,7 +75,7 @@ else
         @if (selectedGroup != null)
         {
             <li class="nav-item" role="presentation">
-                <button class="nav-link @(selectedGroup != null && selectedPipeline == null ? "active" : "")" @onclick="BackToGroup">@selectedGroup.Name Pipelines</button>
+                <button class="nav-link @(selectedGroup != null && selectedPipeline == null ? "active" : "")" @onclick="BackToGroup">@(selectedGroup?.Name) Pipelines</button>
             </li>
         }
         @if (selectedPipeline != null)

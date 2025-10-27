@@ -7,11 +7,21 @@
 
     <main>
         <div class="top-row px-4">
-            <a href="https://docs.microsoft.com/aspnet/" target="_blank">About</a>
+            <h1 class="app-title">GitLab Pipeline Generator</h1>
         </div>
 
         <article class="content px-4">
-            @Body
+            <Microsoft.AspNetCore.Components.Web.ErrorBoundary>
+                <ChildContent>
+                    @Body
+                </ChildContent>
+                <ErrorContent Context="exception">
+                    <div class="alert alert-danger" role="alert">
+                        <h4 class="alert-heading">Something went wrong!</h4>
+                        <p>An error occurred while processing your request.</p>
+                    </div>
+                </ErrorContent>
+            </Microsoft.AspNetCore.Components.Web.ErrorBoundary>
         </article>
     </main>
 </div>

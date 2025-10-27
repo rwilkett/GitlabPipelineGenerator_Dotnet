@@ -8,8 +8,16 @@ var builder = WebApplication.CreateBuilder(args);
 
 // Add services
 builder.Services.AddRazorPages();
-builder.Services.AddServerSideBlazor();
+builder.Services.AddServerSideBlazor(options =>
+{
+    options.DetailedErrors = builder.Environment.IsDevelopment();
+    options.DisconnectedCircuitMaxRetained = 100;
+    options.DisconnectedCircuitRetentionPeriod = TimeSpan.FromMinutes(3);
+});
+
+// Add application services
 builder.Services.AddSingleton<GitlabPipelineGenerator.Web.Services.LoadingService>();
+builder.Services.AddScoped<GitlabPipelineGenerator.Web.Services.StateService>();
 
 // Configure GitLab settings
 builder.Services.Configure<GitLabApiSettings>(options =>
@@ -19,7 +27,7 @@ builder.Services.Configure<GitLabApiSettings>(options =>
     options.RequestTimeout = TimeSpan.FromSeconds(30);
 });
 
-builder.Services.AddSingleton<GitLabApiSettings>(provider => 
+builder.Services.AddSingleton<GitLabApiSettings>(provider =>
     provider.GetRequiredService<IOptions<GitLabApiSettings>>().Value);
 
 // Register Core services
@@ -59,9 +67,15 @@ var app = builder.Build();
 // Configure pipeline
 if (!app.Environment.IsDevelopment())
 {
-    app.UseExceptionHandler("/Home/Error");
+    app.UseExceptionHandler("/Error");
+    app.UseHsts();
+}
+else
+{
+    app.UseDeveloperExceptionPage();
 }
 
+// app.UseHttpsRedirection();
 app.UseStaticFiles();
 app.UseRouting();
 
