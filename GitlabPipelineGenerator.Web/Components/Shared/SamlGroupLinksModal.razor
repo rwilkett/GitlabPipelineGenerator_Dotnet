@@ -18,15 +18,17 @@
                                     <tr>
                                         <th>SAML Group Name</th>
                                         <th>Access Level</th>
+                                        <th>Member Role ID</th>
                                         <th>Provider</th>
                                     </tr>
                                 </thead>
                                 <tbody>
-                                    @foreach (var link in SamlLinks)
+                                    @foreach (SamlGroupLinkModel link in SamlLinks)
                                     {
                                         <tr>
                                             <td><code>@link.SamlGroupName</code></td>
                                             <td><span class="badge bg-primary">@link.AccessLevel</span></td>
+                                            <td>@(string.IsNullOrEmpty(link.MemberRoleId) ? "-" : link.MemberRoleId)</td>
                                             <td>@(string.IsNullOrEmpty(link.ProviderName) ? "-" : link.ProviderName)</td>
                                         </tr>
                                     }

@@ -75,6 +75,7 @@ public class SamlGroupLinkModel
 {
     public string SamlGroupName { get; set; } = string.Empty;
     public string AccessLevel { get; set; } = string.Empty;
+    public string MemberRoleId { get; set; } = string.Empty;
     public string ProviderName { get; set; } = string.Empty;
 }
 
