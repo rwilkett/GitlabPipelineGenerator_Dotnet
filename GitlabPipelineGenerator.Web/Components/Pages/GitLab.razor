@@ -552,16 +552,32 @@ else if (analysisResult != null)
     
     private async Task NextPage()
     {
-        currentPage++;
-        await LoadPageData();
+        LoadingService.SetLoading(true, "Loading next page...");
+        try
+        {
+            currentPage++;
+            await LoadPageData();
+        }
+        finally
+        {
+            LoadingService.SetLoading(false);
+        }
     }
     
     private async Task PreviousPage()
     {
         if (currentPage > 1)
         {
-            currentPage--;
-            await LoadPageData();
+            LoadingService.SetLoading(true, "Loading previous page...");
+            try
+            {
+                currentPage--;
+                await LoadPageData();
+            }
+            finally
+            {
+                LoadingService.SetLoading(false);
+            }
         }
     }
 
@@ -680,8 +696,16 @@ else if (analysisResult != null)
         var tab = tabs.FirstOrDefault(t => t.Id == tabId);
         if (tab != null)
         {
-            tab.CurrentPage++;
-            await LoadTabData(tab);
+            LoadingService.SetLoading(true, "Loading next page...");
+            try
+            {
+                tab.CurrentPage++;
+                await LoadTabData(tab);
+            }
+            finally
+            {
+                LoadingService.SetLoading(false);
+            }
         }
     }
     
@@ -690,8 +714,16 @@ else if (analysisResult != null)
         var tab = tabs.FirstOrDefault(t => t.Id == tabId);
         if (tab != null && tab.CurrentPage > 1)
         {
-            tab.CurrentPage--;
-            await LoadTabData(tab);
+            LoadingService.SetLoading(true, "Loading previous page...");
+            try
+            {
+                tab.CurrentPage--;
+                await LoadTabData(tab);
+            }
+            finally
+            {
+                LoadingService.SetLoading(false);
+            }
         }
     }
 
