@@ -1,0 +1,349 @@
+@page "/compare"
+@using GitlabPipelineGenerator.Web.Models
+@using GitlabPipelineGenerator.Web.Services
+@inject IJSRuntime JSRuntime
+@inject LoadingService LoadingService
+
+<PageTitle>Compare</PageTitle>
+
+<h1>Compare GitLab Resources</h1>
+
+<div class="row">
+    <div class="col-md-6">
+        <div class="card">
+            <div class="card-header">
+                <h4>Source</h4>
+            </div>
+            <div class="card-body">
+                <div class="form-group mb-3">
+                    <label>GitLab Instance:</label>
+                    <select class="form-control" @bind="sourceInstanceId">
+                        <option value="">Select Instance</option>
+                        @foreach (var instance in gitlabInstances)
+                        {
+                            <option value="@instance.Id">@instance.Name (@instance.ServerUrl)</option>
+                        }
+                    </select>
+                </div>
+                <div class="form-group mb-3">
+                    <label>Group/Project ID:</label>
+                    <input type="text" class="form-control" @bind="sourceResourceId" placeholder="e.g., 12345 or group/project" />
+                </div>
+                <div class="form-group mb-3">
+                    <label>Resource Type:</label>
+                    <select class="form-control" @bind="sourceResourceType">
+                        <option value="group">Group</option>
+                        <option value="project">Project</option>
+                    </select>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <div class="col-md-6">
+        <div class="card">
+            <div class="card-header">
+                <h4>Target</h4>
+            </div>
+            <div class="card-body">
+                <div class="form-group mb-3">
+                    <label>GitLab Instance:</label>
+                    <select class="form-control" @bind="targetInstanceId">
+                        <option value="">Select Instance</option>
+                        @foreach (var instance in gitlabInstances)
+                        {
+                            <option value="@instance.Id">@instance.Name (@instance.ServerUrl)</option>
+                        }
+                    </select>
+                </div>
+                <div class="form-group mb-3">
+                    <label>Group/Project ID:</label>
+                    <input type="text" class="form-control" @bind="targetResourceId" placeholder="e.g., 12345 or group/project" />
+                </div>
+                <div class="form-group mb-3">
+                    <label>Resource Type:</label>
+                    <select class="form-control" @bind="targetResourceType">
+                        <option value="group">Group</option>
+                        <option value="project">Project</option>
+                    </select>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="text-center mt-3">
+    <button class="btn btn-primary" @onclick="CompareResources" disabled="@isComparing">
+        @if (isComparing)
+        {
+            <span class="spinner-border spinner-border-sm" role="status"></span>
+            <span>Comparing...</span>
+        }
+        else
+        {
+            <span>Compare</span>
+        }
+    </button>
+</div>
+
+@if (comparisonResult != null)
+{
+    <div class="mt-4">
+        <h3>Comparison Results</h3>
+        
+        <div class="row">
+            <div class="col-md-6">
+                <div class="card">
+                    <div class="card-header">
+                        <h5>Source: @comparisonResult.SourceName</h5>
+                    </div>
+                    <div class="card-body">
+                        <p><strong>Variables:</strong> @comparisonResult.SourceVariableCount</p>
+                        <p><strong>URL:</strong> <a href="@comparisonResult.SourceUrl" target="_blank">@comparisonResult.SourceUrl</a></p>
+                    </div>
+                </div>
+            </div>
+            
+            <div class="col-md-6">
+                <div class="card">
+                    <div class="card-header">
+                        <h5>Target: @comparisonResult.TargetName</h5>
+                    </div>
+                    <div class="card-body">
+                        <p><strong>Variables:</strong> @comparisonResult.TargetVariableCount</p>
+                        <p><strong>URL:</strong> <a href="@comparisonResult.TargetUrl" target="_blank">@comparisonResult.TargetUrl</a></p>
+                    </div>
+                </div>
+            </div>
+        </div>
+        
+        @if (comparisonResult.VariableDifferences.Any())
+        {
+            <div class="mt-3">
+                <h4>Variable Differences</h4>
+                <table class="table table-striped">
+                    <thead>
+                        <tr>
+                            <th>Variable Key</th>
+                            <th>Source</th>
+                            <th>Target</th>
+                            <th>Status</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @foreach (var diff in comparisonResult.VariableDifferences)
+                        {
+                            <tr>
+                                <td>@diff.Key</td>
+                                <td>@(diff.SourceExists ? "✓" : "✗")</td>
+                                <td>@(diff.TargetExists ? "✓" : "✗")</td>
+                                <td>
+                                    <span class="badge @GetStatusBadgeClass(diff.Status)">@diff.Status</span>
+                                </td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            </div>
+        }
+    </div>
+}
+
+@if (!string.IsNullOrEmpty(errorMessage))
+{
+    <div class="alert alert-danger mt-3">@errorMessage</div>
+}
+
+@code {
+    private List<GitLabInstanceModel> gitlabInstances = new();
+    private string sourceInstanceId = string.Empty;
+    private string targetInstanceId = string.Empty;
+    private string sourceResourceId = string.Empty;
+    private string targetResourceId = string.Empty;
+    private string sourceResourceType = "group";
+    private string targetResourceType = "group";
+    private bool isComparing = false;
+    private string? errorMessage;
+    private ComparisonResultModel? comparisonResult;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadGitLabInstances();
+    }
+
+    private async Task LoadGitLabInstances()
+    {
+        try
+        {
+            var json = await JSRuntime.InvokeAsync<string>("localStorage.getItem", "gitlab-instances");
+            if (!string.IsNullOrEmpty(json))
+            {
+                var settings = System.Text.Json.JsonSerializer.Deserialize<GitLabSettingsModel>(json);
+                if (settings?.Instances.Any() == true)
+                {
+                    gitlabInstances = settings.Instances;
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            errorMessage = $"Error loading GitLab instances: {ex.Message}";
+        }
+    }
+
+    private async Task CompareResources()
+    {
+        if (string.IsNullOrEmpty(sourceInstanceId) || string.IsNullOrEmpty(targetInstanceId) ||
+            string.IsNullOrEmpty(sourceResourceId) || string.IsNullOrEmpty(targetResourceId))
+        {
+            errorMessage = "Please fill in all required fields.";
+            return;
+        }
+
+        isComparing = true;
+        errorMessage = null;
+        LoadingService.SetLoading(true, "Comparing resources...");
+
+        try
+        {
+            var sourceInstance = gitlabInstances.FirstOrDefault(i => i.Id == sourceInstanceId);
+            var targetInstance = gitlabInstances.FirstOrDefault(i => i.Id == targetInstanceId);
+
+            if (sourceInstance == null || targetInstance == null)
+            {
+                errorMessage = "Invalid GitLab instances selected.";
+                return;
+            }
+
+            var sourceClient = new GitlabPipelineGenerator.GitLabApiClient.GitLabClient(sourceInstance.ServerUrl, sourceInstance.Token);
+            var targetClient = new GitlabPipelineGenerator.GitLabApiClient.GitLabClient(targetInstance.ServerUrl, targetInstance.Token);
+
+            LoadingService.SetLoading(true, "Loading source resource...");
+            var sourceData = await LoadResourceData(sourceClient, sourceResourceId, sourceResourceType);
+            
+            LoadingService.SetLoading(true, "Loading target resource...");
+            var targetData = await LoadResourceData(targetClient, targetResourceId, targetResourceType);
+
+            LoadingService.SetLoading(true, "Analyzing differences...");
+            comparisonResult = new ComparisonResultModel
+            {
+                SourceName = sourceData.Name,
+                TargetName = targetData.Name,
+                SourceUrl = sourceData.WebUrl,
+                TargetUrl = targetData.WebUrl,
+                SourceVariableCount = sourceData.Variables.Count,
+                TargetVariableCount = targetData.Variables.Count,
+                VariableDifferences = CompareVariables(sourceData.Variables, targetData.Variables)
+            };
+        }
+        catch (Exception ex)
+        {
+            errorMessage = $"Error comparing resources: {ex.Message}";
+        }
+        finally
+        {
+            isComparing = false;
+            LoadingService.SetLoading(false);
+        }
+    }
+
+    private async Task<ResourceDataModel> LoadResourceData(GitlabPipelineGenerator.GitLabApiClient.GitLabClient client, string resourceId, string resourceType)
+    {
+        if (resourceType == "group")
+        {
+            var group = await client.GetGroupAsync(resourceId);
+            var variables = await client.GetGroupVariablesAsync(resourceId);
+            return new ResourceDataModel
+            {
+                Name = group.Name,
+                WebUrl = group.WebUrl,
+                Variables = variables.ToDictionary(v => v.Key, v => v.Value ?? "")
+            };
+        }
+        else
+        {
+            var project = await client.GetProjectAsync(resourceId);
+            var variables = await client.GetProjectVariablesAsync(resourceId);
+            return new ResourceDataModel
+            {
+                Name = project.Name,
+                WebUrl = project.WebUrl,
+                Variables = variables.ToDictionary(v => v.Key, v => v.Value ?? "")
+            };
+        }
+    }
+
+    private List<VariableDifferenceModel> CompareVariables(Dictionary<string, string> sourceVars, Dictionary<string, string> targetVars)
+    {
+        var differences = new List<VariableDifferenceModel>();
+        var allKeys = sourceVars.Keys.Union(targetVars.Keys).Distinct();
+
+        foreach (var key in allKeys)
+        {
+            var sourceExists = sourceVars.ContainsKey(key);
+            var targetExists = targetVars.ContainsKey(key);
+            
+            string status;
+            if (sourceExists && targetExists)
+            {
+                status = sourceVars[key] == targetVars[key] ? "Same" : "Different";
+            }
+            else if (sourceExists)
+            {
+                status = "Source Only";
+            }
+            else
+            {
+                status = "Target Only";
+            }
+
+            differences.Add(new VariableDifferenceModel
+            {
+                Key = key,
+                SourceExists = sourceExists,
+                TargetExists = targetExists,
+                Status = status
+            });
+        }
+
+        return differences.OrderBy(d => d.Key).ToList();
+    }
+
+    private string GetStatusBadgeClass(string status)
+    {
+        return status switch
+        {
+            "Same" => "bg-success",
+            "Different" => "bg-warning",
+            "Source Only" => "bg-info",
+            "Target Only" => "bg-secondary",
+            _ => "bg-light"
+        };
+    }
+
+    public class ComparisonResultModel
+    {
+        public string SourceName { get; set; } = string.Empty;
+        public string TargetName { get; set; } = string.Empty;
+        public string SourceUrl { get; set; } = string.Empty;
+        public string TargetUrl { get; set; } = string.Empty;
+        public int SourceVariableCount { get; set; }
+        public int TargetVariableCount { get; set; }
+        public List<VariableDifferenceModel> VariableDifferences { get; set; } = new();
+    }
+
+    public class VariableDifferenceModel
+    {
+        public string Key { get; set; } = string.Empty;
+        public bool SourceExists { get; set; }
+        public bool TargetExists { get; set; }
+        public string Status { get; set; } = string.Empty;
+    }
+
+    public class ResourceDataModel
+    {
+        public string Name { get; set; } = string.Empty;
+        public string WebUrl { get; set; } = string.Empty;
+        public Dictionary<string, string> Variables { get; set; } = new();
+    }
+}

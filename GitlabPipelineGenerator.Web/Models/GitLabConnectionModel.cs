@@ -9,6 +9,21 @@ public class GitLabConnectionModel
     public bool IsConnected { get; set; }
 }
 
+public class GitLabInstanceModel
+{
+    public string Id { get; set; } = string.Empty;
+    public string Name { get; set; } = string.Empty;
+    public string ServerUrl { get; set; } = "https://gitlab.com";
+    public string Token { get; set; } = string.Empty;
+    public string DefaultGroupId { get; set; } = string.Empty;
+}
+
+public class GitLabSettingsModel
+{
+    public List<GitLabInstanceModel> Instances { get; set; } = new();
+    public string? DefaultInstanceId { get; set; }
+}
+
 public class ProjectListModel
 {
     public string Token { get; set; } = string.Empty;

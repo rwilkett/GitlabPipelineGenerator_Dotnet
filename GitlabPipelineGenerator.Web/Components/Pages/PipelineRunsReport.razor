@@ -98,15 +98,22 @@
 
         try
         {
-            var json = await JSRuntime.InvokeAsync<string>("localStorage.getItem", "gitlab-settings");
+            var json = await JSRuntime.InvokeAsync<string>("localStorage.getItem", "gitlab-instances");
             if (string.IsNullOrEmpty(json))
             {
-                errorMessage = "No GitLab settings found. Please configure GitLab connection in Settings.";
+                errorMessage = "No GitLab instances found. Please configure GitLab connection in Settings.";
                 return;
             }
 
-            var settings = System.Text.Json.JsonSerializer.Deserialize<GitLabConnectionModel>(json);
-            if (settings == null || string.IsNullOrEmpty(settings.Token) || string.IsNullOrEmpty(settings.DefaultGroupId))
+            var gitlabSettings = System.Text.Json.JsonSerializer.Deserialize<GitLabSettingsModel>(json);
+            if (gitlabSettings?.Instances.Any() != true)
+            {
+                errorMessage = "No GitLab instances configured. Please check Settings.";
+                return;
+            }
+            
+            var settings = gitlabSettings.Instances.FirstOrDefault(i => i.Id == gitlabSettings.DefaultInstanceId) ?? gitlabSettings.Instances.First();
+            if (string.IsNullOrEmpty(settings.Token) || string.IsNullOrEmpty(settings.DefaultGroupId))
             {
                 errorMessage = "GitLab token or default group ID not configured. Please check Settings.";
                 return;
