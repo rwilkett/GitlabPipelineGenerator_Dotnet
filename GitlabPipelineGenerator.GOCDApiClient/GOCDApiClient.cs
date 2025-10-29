@@ -69,7 +69,9 @@ public class GOCDApiClient : IDisposable
 
     public async Task<PipelineHistory> GetPipelineHistoryAsync(string pipelineName, int offset = 0)
     {
-        var response = await _httpClient.GetAsync($"{_baseUrl}/go/api/pipelines/{pipelineName}/history/{offset}");
+        _httpClient.DefaultRequestHeaders.Accept.Clear();
+        _httpClient.DefaultRequestHeaders.Accept.Add(new System.Net.Http.Headers.MediaTypeWithQualityHeaderValue("application/vnd.go.cd.v1+json"));
+        var response = await _httpClient.GetAsync($"{_baseUrl}/go/api/pipelines/{pipelineName}/history?page_size=100");
         response.EnsureSuccessStatusCode();
 
         var content = await response.Content.ReadAsStringAsync();
@@ -139,8 +141,60 @@ public class GOCDApiClient : IDisposable
         return JsonSerializer.Deserialize<PipelineConfig>(content, _jsonOptions);
     }
 
+    public async Task<List<ProductionDeployment>> GetProductionDeploymentsAsync(DateTime startDate, DateTime endDate)
+    {
+        var deployments = new List<ProductionDeployment>();
+        var groups = await GetPipelineGroupsAsync();
+
+        foreach (var group in groups)
+        {
+            foreach (var pipeline in group.Pipelines)
+            {
+                try
+                {
+                    var history = await GetPipelineHistoryAsync(pipeline.Name);
+                    foreach (var run in history.Pipelines)
+                    {
+                        var deployStage = run.Stages.FirstOrDefault(s => s.Name == "DeployToProd");
+                        if (deployStage != null && deployStage.Result == "Passed")
+                        {
+                            var deployDate = deployStage.Jobs.Where(j => j.ScheduledDate.HasValue)
+                                .Max(j => j.ScheduledDate);
+
+                            var localDeployDate = deployDate?.ToLocalTime();
+                            if (localDeployDate.HasValue && localDeployDate >= startDate && localDeployDate <= endDate)
+                            {
+                                deployments.Add(new ProductionDeployment
+                                {
+                                    GroupName = group.Name,
+                                    PipelineName = run.Name,
+                                    PipelineLabel = run.Label,
+                                    ProdDeployDate = localDeployDate.Value
+                                });
+                            }
+                        }
+                    }
+                }
+                catch
+                {
+                    // Skip pipelines with no history or access issues
+                }
+            }
+        }
+
+        return deployments.OrderBy(d => d.ProdDeployDate).ToList();
+    }
+
     public void Dispose()
     {
         _httpClient?.Dispose();
     }
+}
+
+public class ProductionDeployment
+{
+    public string GroupName { get; set; } = string.Empty;
+    public string PipelineName { get; set; } = string.Empty;
+    public string PipelineLabel { get; set; } = string.Empty;
+    public DateTime ProdDeployDate { get; set; }
 }
