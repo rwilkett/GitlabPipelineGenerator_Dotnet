@@ -105,7 +105,8 @@ else if ((projects != null || searchResults != null) && analysisResult == null)
                         ShowVariables="false" 
                         ShowBrowseButton="true" 
                         OnGroupClick="() => ConnectToGroup(group.Id.ToString(), group.Name)" 
-                        OnViewSamlLinks="() => ViewSamlLinks(group.Id.ToString(), group.Name)" />
+                        OnViewSamlLinks="() => ViewSamlLinks(group.Id.ToString(), group.Name)" 
+                        OnExportJson="() => ExportGroupJson(group.Id.ToString(), group.Name)" />
                 }
             </div>
         }
@@ -122,7 +123,8 @@ else if ((projects != null || searchResults != null) && analysisResult == null)
                         ShowBrowseButton="false" 
                         OnGroupClick="() => OpenSubgroupTab(subgroup)" 
                         OnViewVariables="() => ShowVariables(subgroup.Variables)" 
-                        OnViewSamlLinks="() => ViewSamlLinks(subgroup.Id.ToString(), subgroup.Name)" />
+                        OnViewSamlLinks="() => ViewSamlLinks(subgroup.Id.ToString(), subgroup.Name)" 
+                        OnExportJson="() => ExportGroupJson(subgroup.Id.ToString(), subgroup.Name)" />
                 }
             </div>
         }
@@ -304,6 +306,7 @@ else if (analysisResult != null)
 
 <VariablesModal Show="showVariablesModal" Variables="selectedVariables" OnClose="CloseVariablesModal" />
 <SamlGroupLinksModal Show="showSamlLinksModal" SamlLinks="selectedSamlLinks" OnClose="CloseSamlLinksModal" />
+<GroupExportModal Show="showExportModal" GroupName="exportGroupName" OnClose="CloseExportModal" OnExport="HandleGroupExport" />
 
 @code {
     private GitLabConnectionModel connectionModel = new();
@@ -334,6 +337,9 @@ else if (analysisResult != null)
     private ProjectVariablesModel? selectedVariables;
     private bool showSamlLinksModal = false;
     private List<SamlGroupLinkModel>? selectedSamlLinks;
+    private bool showExportModal = false;
+    private string exportGroupId = string.Empty;
+    private string exportGroupName = string.Empty;
     
     public class TabItem
     {
@@ -1023,6 +1029,55 @@ else if (analysisResult != null)
         {
             isLoadingVariables = false;
             loadingVariablesFor = null;
+        }
+    }
+    
+    private void ExportGroupJson(string groupId, string groupName)
+    {
+        exportGroupId = groupId;
+        exportGroupName = groupName;
+        showExportModal = true;
+    }
+    
+    private void CloseExportModal()
+    {
+        showExportModal = false;
+        exportGroupId = string.Empty;
+        exportGroupName = string.Empty;
+    }
+    
+    private async Task HandleGroupExport((string FilePath, string FileName) exportInfo)
+    {
+        showExportModal = false;
+        LoadingService.SetLoading(true, $"Exporting {exportGroupName} JSON...");
+        
+        try
+        {
+            var gitlabClient = new GitlabPipelineGenerator.GitLabApiClient.GitLabClient(
+                connectionModel.ServerUrl, 
+                connectionModel.Token);
+            
+            var group = await gitlabClient.GetGroupAsync(exportGroupId);
+            
+            var exportData = new
+            {
+                name = group.Name,
+                path = group.Path,
+                description = group.Description,
+                visibility = "private"
+            };
+            
+            var json = System.Text.Json.JsonSerializer.Serialize(exportData, new System.Text.Json.JsonSerializerOptions { WriteIndented = true });
+            
+            await JSRuntime.InvokeVoidAsync("downloadFile", exportInfo.FileName, json, "application/json");
+        }
+        catch (Exception ex)
+        {
+            errorMessage = $"Failed to export group JSON for {exportGroupName}: {ex.Message}";
+        }
+        finally
+        {
+            LoadingService.SetLoading(false);
         }
     }
     

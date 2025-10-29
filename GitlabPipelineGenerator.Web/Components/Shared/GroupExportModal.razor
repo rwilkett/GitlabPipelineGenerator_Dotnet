@@ -1,0 +1,71 @@
+@inject IJSRuntime JSRuntime
+
+@if (Show)
+{
+    <div class="modal fade show d-block" tabindex="-1" style="background-color: rgba(0,0,0,0.5);">
+        <div class="modal-dialog">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title">Export Group JSON</h5>
+                    <button type="button" class="btn-close" @onclick="OnClose"></button>
+                </div>
+                <div class="modal-body">
+                    <div class="mb-3">
+                        <label class="form-label">Group: @GroupName</label>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">Save Location:</label>
+                        <div class="input-group">
+                            <input type="text" class="form-control" @bind="FileName" readonly />
+                            <button class="btn btn-outline-secondary" type="button" @onclick="SelectSaveLocation">Browse...</button>
+                        </div>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" @onclick="OnClose">Cancel</button>
+                    <button type="button" class="btn btn-primary" @onclick="HandleExport">Export</button>
+                </div>
+            </div>
+        </div>
+    </div>
+}
+
+@code {
+    [Parameter] public bool Show { get; set; }
+    [Parameter] public string GroupName { get; set; } = string.Empty;
+    [Parameter] public EventCallback OnClose { get; set; }
+    [Parameter] public EventCallback<(string FilePath, string FileName)> OnExport { get; set; }
+
+    private string FileName { get; set; } = "";
+    private IJSObjectReference? fileHandle;
+
+    protected override void OnParametersSet()
+    {
+        if (Show && !string.IsNullOrEmpty(GroupName))
+        {
+            FileName = $"gitlab-group-create-{GroupName.Replace("/", "-")}-{DateTime.Now:yyyyMMdd-HHmmss}.json";
+        }
+    }
+
+    private async Task SelectSaveLocation()
+    {
+        try
+        {
+            var module = await JSRuntime.InvokeAsync<IJSObjectReference>("import", "./js/filePicker.js");
+            fileHandle = await module.InvokeAsync<IJSObjectReference>("showSaveFilePicker", FileName);
+            if (fileHandle != null)
+            {
+                FileName = await fileHandle.InvokeAsync<string>("name") ?? FileName;
+            }
+        }
+        catch
+        {
+            // Fallback if File System Access API not supported
+        }
+    }
+
+    private async Task HandleExport()
+    {
+        await OnExport.InvokeAsync((string.Empty, FileName));
+    }
+}

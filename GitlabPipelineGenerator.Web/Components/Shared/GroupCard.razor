@@ -26,12 +26,16 @@
                     <div class="d-flex gap-1 mt-2">
                         <button class="btn btn-sm btn-outline-info" @onclick="OnViewVariables" @onclick:stopPropagation="true">Variables</button>
                         <button class="btn btn-sm btn-outline-secondary" @onclick="OnViewSamlLinks" @onclick:stopPropagation="true">SAML Links</button>
+                        <button class="btn btn-sm btn-outline-warning" @onclick="OnExportJson" @onclick:stopPropagation="true">Export JSON</button>
                     </div>
                 }
                 @if (ShowVariables && (Variables == null || Variables.TotalVariables == 0))
                 {
                     <br>
-                    <button class="btn btn-sm btn-outline-secondary mt-2" @onclick="OnViewSamlLinks" @onclick:stopPropagation="true">SAML Links</button>
+                    <div class="d-flex gap-1 mt-2">
+                        <button class="btn btn-sm btn-outline-secondary" @onclick="OnViewSamlLinks" @onclick:stopPropagation="true">SAML Links</button>
+                        <button class="btn btn-sm btn-outline-warning" @onclick="OnExportJson" @onclick:stopPropagation="true">Export JSON</button>
+                    </div>
                 }
             </p>
             @if (ShowBrowseButton)
@@ -42,6 +46,9 @@
                     </button>
                     <button class="btn btn-outline-secondary" @onclick="OnViewSamlLinks" @onclick:stopPropagation="true">
                         SAML Links
+                    </button>
+                    <button class="btn btn-outline-warning" @onclick="OnExportJson" @onclick:stopPropagation="true">
+                        Export JSON
                     </button>
                 </div>
             }
@@ -57,4 +64,5 @@
     [Parameter] public EventCallback OnGroupClick { get; set; }
     [Parameter] public EventCallback OnViewVariables { get; set; }
     [Parameter] public EventCallback OnViewSamlLinks { get; set; }
+    [Parameter] public EventCallback OnExportJson { get; set; }
 }
