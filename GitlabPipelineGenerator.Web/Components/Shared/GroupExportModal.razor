@@ -14,6 +14,27 @@
                         <label class="form-label">Group: @GroupName</label>
                     </div>
                     <div class="mb-3">
+                        <label class="form-label">Export Options:</label>
+                        <div class="form-check">
+                            <input class="form-check-input" type="checkbox" @bind="IncludeVariables" id="includeVariables">
+                            <label class="form-check-label" for="includeVariables">
+                                Include CI/CD Variables
+                            </label>
+                        </div>
+                        <div class="form-check">
+                            <input class="form-check-input" type="checkbox" @bind="IncludeSamlLinks" id="includeSamlLinks">
+                            <label class="form-check-label" for="includeSamlLinks">
+                                Include SAML Links
+                            </label>
+                        </div>
+                        <div class="form-check">
+                            <input class="form-check-input" type="checkbox" @bind="IncludeSubgroups" id="includeSubgroups">
+                            <label class="form-check-label" for="includeSubgroups">
+                                Include Subgroups
+                            </label>
+                        </div>
+                    </div>
+                    <div class="mb-3">
                         <label class="form-label">Save Location:</label>
                         <div class="input-group">
                             <input type="text" class="form-control" @bind="FileName" readonly />
@@ -34,9 +55,12 @@
     [Parameter] public bool Show { get; set; }
     [Parameter] public string GroupName { get; set; } = string.Empty;
     [Parameter] public EventCallback OnClose { get; set; }
-    [Parameter] public EventCallback<(string FilePath, string FileName)> OnExport { get; set; }
+    [Parameter] public EventCallback<(string FilePath, string FileName, bool IncludeVariables, bool IncludeSamlLinks, bool IncludeSubgroups)> OnExport { get; set; }
 
     private string FileName { get; set; } = "";
+    private bool IncludeVariables { get; set; } = false;
+    private bool IncludeSamlLinks { get; set; } = false;
+    private bool IncludeSubgroups { get; set; } = false;
     private IJSObjectReference? fileHandle;
 
     protected override void OnParametersSet()
@@ -55,7 +79,8 @@
             fileHandle = await module.InvokeAsync<IJSObjectReference>("showSaveFilePicker", FileName);
             if (fileHandle != null)
             {
-                FileName = await fileHandle.InvokeAsync<string>("name") ?? FileName;
+                var name = await fileHandle.InvokeAsync<string>("name") ?? FileName;
+                FileName = $"📁 Selected: {name}";
             }
         }
         catch
@@ -66,6 +91,15 @@
 
     private async Task HandleExport()
     {
-        await OnExport.InvokeAsync((string.Empty, FileName));
+        await OnExport.InvokeAsync((fileHandle != null ? "fileHandle" : string.Empty, FileName, IncludeVariables, IncludeSamlLinks, IncludeSubgroups));
+    }
+    
+    public async Task WriteToSelectedFile(string content)
+    {
+        if (fileHandle != null)
+        {
+            var module = await JSRuntime.InvokeAsync<IJSObjectReference>("import", "./js/filePicker.js");
+            await module.InvokeVoidAsync("writeToFile", fileHandle, content);
+        }
     }
 }

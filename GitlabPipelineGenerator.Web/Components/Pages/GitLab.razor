@@ -3,6 +3,7 @@
 @using GitlabPipelineGenerator.Core.Interfaces
 @using GitlabPipelineGenerator.Core.Models.GitLab
 @using GitlabPipelineGenerator.Web.Services
+@using GitlabPipelineGenerator.Web.Components.Shared
 @inject IGitLabProjectService GitLabProjectService
 @inject IProjectAnalysisService ProjectAnalysisService
 @inject IIntelligentPipelineGenerator PipelineGenerator
@@ -306,7 +307,7 @@ else if (analysisResult != null)
 
 <VariablesModal Show="showVariablesModal" Variables="selectedVariables" OnClose="CloseVariablesModal" />
 <SamlGroupLinksModal Show="showSamlLinksModal" SamlLinks="selectedSamlLinks" OnClose="CloseSamlLinksModal" />
-<GroupExportModal Show="showExportModal" GroupName="exportGroupName" OnClose="CloseExportModal" OnExport="HandleGroupExport" />
+<GroupExportModal @ref="exportModal" Show="showExportModal" GroupName="exportGroupName" OnClose="CloseExportModal" OnExport="HandleGroupExport" />
 
 @code {
     private GitLabConnectionModel connectionModel = new();
@@ -340,6 +341,7 @@ else if (analysisResult != null)
     private bool showExportModal = false;
     private string exportGroupId = string.Empty;
     private string exportGroupName = string.Empty;
+    private GroupExportModal? exportModal;
     
     public class TabItem
     {
@@ -1046,7 +1048,7 @@ else if (analysisResult != null)
         exportGroupName = string.Empty;
     }
     
-    private async Task HandleGroupExport((string FilePath, string FileName) exportInfo)
+    private async Task HandleGroupExport((string FilePath, string FileName, bool IncludeVariables, bool IncludeSamlLinks, bool IncludeSubgroups) exportInfo)
     {
         showExportModal = false;
         LoadingService.SetLoading(true, $"Exporting {exportGroupName} JSON...");
@@ -1059,17 +1061,108 @@ else if (analysisResult != null)
             
             var group = await gitlabClient.GetGroupAsync(exportGroupId);
             
-            var exportData = new
+            var exportData = new Dictionary<string, object>
             {
-                name = group.Name,
-                path = group.Path,
-                description = group.Description,
-                visibility = "private"
+                ["id"] = group.Id,
+                ["name"] = group.Name,
+                ["path"] = group.Path,
+                ["description"] = group.Description,
+                ["visibility"] = "private",
+                ["full_name"] = group.FullName,
+                ["full_path"] = group.FullPath,
+                ["web_url"] = group.WebUrl,
+                ["parent_id"] = (int?)null
             };
+            
+            if (exportInfo.IncludeVariables)
+            {
+                try
+                {
+                    LoadingService.SetLoading(true, "Fetching CI/CD variables...");
+                    var variables = await gitlabClient.GetGroupVariablesAsync(exportGroupId);
+                    exportData["variables"] = variables.Select(v => new
+                    {
+                        key = v.Key,
+                        value = v.Value,
+                        variable_type = v.VariableType,
+                        @protected = v.Protected,
+                        masked = v.Masked,
+                        raw = v.Raw,
+                        environment_scope = v.EnvironmentScope,
+                        description = v.Description
+                    }).ToList();
+                }
+                catch
+                {
+                    exportData["variables"] = new List<object>();
+                }
+            }
+            
+            if (exportInfo.IncludeSamlLinks)
+            {
+                try
+                {
+                    LoadingService.SetLoading(true, "Fetching SAML links...");
+                    var samlLinks = await gitlabClient.GetGroupSamlLinksAsync(exportGroupId);
+                    exportData["saml_group_links"] = samlLinks.Select(s => new
+                    {
+                        name = s.SamlGroupName,
+                        access_level = s.AccessLevel,
+                        member_role_id = s.MemberRoleId,
+                        provider = s.Provider
+                    }).ToList();
+                }
+                catch
+                {
+                    exportData["saml_group_links"] = new List<object>();
+                }
+            }
+            
+            if (exportInfo.IncludeSubgroups)
+            {
+                try
+                {
+                    LoadingService.SetLoading(true, "Fetching subgroups...");
+                    var subgroups = await gitlabClient.GetSubgroupsAsync(exportGroupId, 100, 1);
+                    exportData["subgroups"] = subgroups.Select(sg => new
+                    {
+                        id = sg.Id,
+                        name = sg.Name,
+                        path = sg.Path,
+                        description = sg.Description,
+                        full_name = sg.FullName,
+                        full_path = sg.FullPath,
+                        web_url = sg.WebUrl
+                    }).ToList();
+                }
+                catch
+                {
+                    exportData["subgroups"] = new List<object>();
+                }
+            }
             
             var json = System.Text.Json.JsonSerializer.Serialize(exportData, new System.Text.Json.JsonSerializerOptions { WriteIndented = true });
             
-            await JSRuntime.InvokeVoidAsync("downloadFile", exportInfo.FileName, json, "application/json");
+            if (exportInfo.FilePath == "fileHandle" && exportModal != null)
+            {
+                // Use File System Access API
+                await exportModal.WriteToSelectedFile(json);
+            }
+            else
+            {
+                // Fallback to download
+                await JSRuntime.InvokeVoidAsync("eval", $@"
+                    const blob = new Blob([{System.Text.Json.JsonSerializer.Serialize(json)}], {{ type: 'application/json' }});
+                    const url = URL.createObjectURL(blob);
+                    const a = document.createElement('a');
+                    a.href = url;
+                    a.download = '{exportInfo.FileName}';
+                    document.body.appendChild(a);
+                    a.click();
+                    document.body.removeChild(a);
+                    URL.revokeObjectURL(url);
+                ");
+            }
         }
         catch (Exception ex)
         {
