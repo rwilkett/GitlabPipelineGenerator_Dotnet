@@ -1048,7 +1048,7 @@ else if (analysisResult != null)
         exportGroupName = string.Empty;
     }
     
-    private async Task HandleGroupExport((string FilePath, string FileName, bool IncludeVariables, bool IncludeSamlLinks, bool IncludeSubgroups) exportInfo)
+    private async Task HandleGroupExport((string FilePath, string FileName, bool IncludeVariables, bool IncludeSamlLinks, bool IncludeSubgroups, bool IncludeProvisionedUsers) exportInfo)
     {
         showExportModal = false;
         LoadingService.SetLoading(true, $"Exporting {exportGroupName} JSON...");
@@ -1138,6 +1138,28 @@ else if (analysisResult != null)
                 catch
                 {
                     exportData["subgroups"] = new List<object>();
+                }
+            }
+            
+            if (exportInfo.IncludeProvisionedUsers)
+            {
+                try
+                {
+                    LoadingService.SetLoading(true, "Fetching provisioned users...");
+                    var members = await gitlabClient.GetGroupMembersAsync(exportGroupId);
+                    exportData["provisioned_users"] = members.Select(m => new
+                    {
+                        id = m.Id,
+                        username = m.Username,
+                        name = m.Name,
+                        email = m.Email,
+                        access_level = m.AccessLevel,
+                        expires_at = m.ExpiresAt
+                    }).ToList();
+                }
+                catch
+                {
+                    exportData["provisioned_users"] = new List<object>();
                 }
             }
             

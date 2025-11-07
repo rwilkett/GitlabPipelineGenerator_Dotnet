@@ -33,6 +33,12 @@
                                 Include Subgroups
                             </label>
                         </div>
+                        <div class="form-check">
+                            <input class="form-check-input" type="checkbox" @bind="IncludeProvisionedUsers" id="includeProvisionedUsers">
+                            <label class="form-check-label" for="includeProvisionedUsers">
+                                Include Provisioned Users
+                            </label>
+                        </div>
                     </div>
                     <div class="mb-3">
                         <label class="form-label">Save Location:</label>
@@ -55,12 +61,13 @@
     [Parameter] public bool Show { get; set; }
     [Parameter] public string GroupName { get; set; } = string.Empty;
     [Parameter] public EventCallback OnClose { get; set; }
-    [Parameter] public EventCallback<(string FilePath, string FileName, bool IncludeVariables, bool IncludeSamlLinks, bool IncludeSubgroups)> OnExport { get; set; }
+    [Parameter] public EventCallback<(string FilePath, string FileName, bool IncludeVariables, bool IncludeSamlLinks, bool IncludeSubgroups, bool IncludeProvisionedUsers)> OnExport { get; set; }
 
     private string FileName { get; set; } = "";
     private bool IncludeVariables { get; set; } = false;
     private bool IncludeSamlLinks { get; set; } = false;
     private bool IncludeSubgroups { get; set; } = false;
+    private bool IncludeProvisionedUsers { get; set; } = false;
     private IJSObjectReference? fileHandle;
 
     protected override void OnParametersSet()
@@ -80,7 +87,8 @@
             if (fileHandle != null)
             {
                 var name = await fileHandle.InvokeAsync<string>("name") ?? FileName;
-                FileName = $"📁 Selected: {name}";
+                FileName = name;
+                StateHasChanged();
             }
         }
         catch
@@ -91,7 +99,7 @@
 
     private async Task HandleExport()
     {
-        await OnExport.InvokeAsync((fileHandle != null ? "fileHandle" : string.Empty, FileName, IncludeVariables, IncludeSamlLinks, IncludeSubgroups));
+        await OnExport.InvokeAsync((fileHandle != null ? "fileHandle" : string.Empty, FileName, IncludeVariables, IncludeSamlLinks, IncludeSubgroups, IncludeProvisionedUsers));
     }
     
     public async Task WriteToSelectedFile(string content)
