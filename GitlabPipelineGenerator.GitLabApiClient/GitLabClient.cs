@@ -261,6 +261,107 @@ public class GitLabClient : IDisposable
         return JsonSerializer.Deserialize<List<Member>>(json, _jsonOptions) ?? new List<Member>();
     }
 
+    public async Task<List<Group>> GetTopLevelGroupsAsync(int perPage = 100)
+    {
+        var response = await _httpClient.GetAsync($"{_baseUrl}/api/v4/groups?top_level_only=true&per_page={perPage}");
+        
+        if (!response.IsSuccessStatusCode)
+        {
+            throw new GitLabApiException($"Failed to get top-level groups: {response.StatusCode}", response.StatusCode);
+        }
+
+        var json = await response.Content.ReadAsStringAsync();
+        return JsonSerializer.Deserialize<List<Group>>(json, _jsonOptions) ?? new List<Group>();
+    }
+
+    public async Task<Group> CreateGroupAsync(string name, string path, string description)
+    {
+        var payload = new { name, path, description };
+        var json = JsonSerializer.Serialize(payload, _jsonOptions);
+        var content = new StringContent(json, Encoding.UTF8, "application/json");
+        
+        var response = await _httpClient.PostAsync($"{_baseUrl}/api/v4/groups", content);
+        
+        if (!response.IsSuccessStatusCode)
+        {
+            throw new GitLabApiException($"Failed to create group: {response.StatusCode}", response.StatusCode);
+        }
+
+        var responseJson = await response.Content.ReadAsStringAsync();
+        return JsonSerializer.Deserialize<Group>(responseJson, _jsonOptions) ?? throw new GitLabApiException("Failed to deserialize created group");
+    }
+
+    public async Task<Group> CreateSubgroupAsync(string parentId, string name, string path, string description)
+    {
+        var payload = new { name, path, description, parent_id = int.Parse(parentId) };
+        var json = JsonSerializer.Serialize(payload, _jsonOptions);
+        var content = new StringContent(json, Encoding.UTF8, "application/json");
+        
+        var response = await _httpClient.PostAsync($"{_baseUrl}/api/v4/groups", content);
+        
+        if (!response.IsSuccessStatusCode)
+        {
+            throw new GitLabApiException($"Failed to create subgroup: {response.StatusCode}", response.StatusCode);
+        }
+
+        var responseJson = await response.Content.ReadAsStringAsync();
+        return JsonSerializer.Deserialize<Group>(responseJson, _jsonOptions) ?? throw new GitLabApiException("Failed to deserialize created subgroup");
+    }
+
+    public async Task CreateGroupVariableAsync(string groupId, string key, string value, string variableType, bool @protected, bool masked, string environmentScope)
+    {
+        var payload = new { key, value, variable_type = variableType, @protected, masked, environment_scope = environmentScope };
+        var json = JsonSerializer.Serialize(payload, _jsonOptions);
+        var content = new StringContent(json, Encoding.UTF8, "application/json");
+        
+        var response = await _httpClient.PostAsync($"{_baseUrl}/api/v4/groups/{groupId}/variables", content);
+        
+        if (!response.IsSuccessStatusCode)
+        {
+            throw new GitLabApiException($"Failed to create group variable: {response.StatusCode}", response.StatusCode);
+        }
+    }
+
+    public async Task CreateGroupSamlLinkAsync(string groupId, string samlGroupName, int accessLevel)
+    {
+        var payload = new { saml_group_name = samlGroupName, access_level = accessLevel };
+        var json = JsonSerializer.Serialize(payload, _jsonOptions);
+        var content = new StringContent(json, Encoding.UTF8, "application/json");
+        
+        var response = await _httpClient.PostAsync($"{_baseUrl}/api/v4/groups/{groupId}/saml_group_links", content);
+        
+        if (!response.IsSuccessStatusCode)
+        {
+            throw new GitLabApiException($"Failed to create SAML group link: {response.StatusCode}", response.StatusCode);
+        }
+    }
+
+    public async Task DeleteAllGroupVariablesAsync(string groupId)
+    {
+        var variables = await GetGroupVariablesAsync(groupId);
+        foreach (var variable in variables)
+        {
+            var response = await _httpClient.DeleteAsync($"{_baseUrl}/api/v4/groups/{groupId}/variables/{Uri.EscapeDataString(variable.Key)}");
+            if (!response.IsSuccessStatusCode)
+            {
+                throw new GitLabApiException($"Failed to delete group variable: {response.StatusCode}", response.StatusCode);
+            }
+        }
+    }
+
+    public async Task DeleteAllGroupSamlLinksAsync(string groupId)
+    {
+        var samlLinks = await GetGroupSamlLinksAsync(groupId);
+        foreach (var link in samlLinks)
+        {
+            var response = await _httpClient.DeleteAsync($"{_baseUrl}/api/v4/groups/{groupId}/saml_group_links/{Uri.EscapeDataString(link.SamlGroupName)}");
+            if (!response.IsSuccessStatusCode)
+            {
+                throw new GitLabApiException($"Failed to delete SAML group link: {response.StatusCode}", response.StatusCode);
+            }
+        }
+    }
+
     public void Dispose()
     {
         _httpClient?.Dispose();
