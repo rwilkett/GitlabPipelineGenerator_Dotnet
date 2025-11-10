@@ -18,6 +18,7 @@ builder.Services.AddServerSideBlazor(options =>
 // Add application services
 builder.Services.AddSingleton<GitlabPipelineGenerator.Web.Services.LoadingService>();
 builder.Services.AddScoped<GitlabPipelineGenerator.Web.Services.StateService>();
+builder.Services.AddScoped<GitlabPipelineGenerator.Web.Services.IComparisonService, GitlabPipelineGenerator.Web.Services.ComparisonService>();
 
 // Configure GitLab settings
 builder.Services.Configure<GitLabApiSettings>(options =>

@@ -725,9 +725,18 @@
 
     private async Task CopySubgroups(GitlabPipelineGenerator.GitLabApiClient.GitLabClient sourceClient, GitlabPipelineGenerator.GitLabApiClient.GitLabClient targetClient, string sourceParentId, string targetParentId)
     {
-        var subgroups = await sourceClient.GetSubgroupsAsync(sourceParentId, 100, 1);
+        // Get all subgroups with pagination
+        var allSubgroups = new List<GitlabPipelineGenerator.GitLabApiClient.Models.Group>();
+        int page = 1;
+        List<GitlabPipelineGenerator.GitLabApiClient.Models.Group> pageSubgroups;
+        do
+        {
+            pageSubgroups = await sourceClient.GetSubgroupsAsync(sourceParentId, 100, page);
+            allSubgroups.AddRange(pageSubgroups);
+            page++;
+        } while (pageSubgroups.Count == 100);
         
-        foreach (var subgroup in subgroups)
+        foreach (var subgroup in allSubgroups)
         {
             var createdSubgroup = await targetClient.CreateSubgroupAsync(targetParentId, subgroup.Name, subgroup.Path, subgroup.Description ?? "");
             
@@ -830,12 +839,31 @@
 
     private async Task SyncSubgroups(GitlabPipelineGenerator.GitLabApiClient.GitLabClient sourceClient, GitlabPipelineGenerator.GitLabApiClient.GitLabClient targetClient, string sourceParentId, string targetParentId)
     {
-        var sourceSubgroups = await sourceClient.GetSubgroupsAsync(sourceParentId, 100, 1);
-        var targetSubgroups = await targetClient.GetSubgroupsAsync(targetParentId, 100, 1);
-        
-        foreach (var sourceSubgroup in sourceSubgroups)
+        // Get all source subgroups with pagination
+        var allSourceSubgroups = new List<GitlabPipelineGenerator.GitLabApiClient.Models.Group>();
+        int sourcePage = 1;
+        List<GitlabPipelineGenerator.GitLabApiClient.Models.Group> pageSourceSubgroups;
+        do
         {
-            var targetSubgroup = targetSubgroups.FirstOrDefault(t => t.Name.Equals(sourceSubgroup.Name, StringComparison.OrdinalIgnoreCase));
+            pageSourceSubgroups = await sourceClient.GetSubgroupsAsync(sourceParentId, 100, sourcePage);
+            allSourceSubgroups.AddRange(pageSourceSubgroups);
+            sourcePage++;
+        } while (pageSourceSubgroups.Count == 100);
+        
+        // Get all target subgroups with pagination
+        var allTargetSubgroups = new List<GitlabPipelineGenerator.GitLabApiClient.Models.Group>();
+        int targetPage = 1;
+        List<GitlabPipelineGenerator.GitLabApiClient.Models.Group> pageTargetSubgroups;
+        do
+        {
+            pageTargetSubgroups = await targetClient.GetSubgroupsAsync(targetParentId, 100, targetPage);
+            allTargetSubgroups.AddRange(pageTargetSubgroups);
+            targetPage++;
+        } while (pageTargetSubgroups.Count == 100);
+        
+        foreach (var sourceSubgroup in allSourceSubgroups)
+        {
+            var targetSubgroup = allTargetSubgroups.FirstOrDefault(t => t.Name.Equals(sourceSubgroup.Name, StringComparison.OrdinalIgnoreCase));
             
             if (targetSubgroup == null)
             {
