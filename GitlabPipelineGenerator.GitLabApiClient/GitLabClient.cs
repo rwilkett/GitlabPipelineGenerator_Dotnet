@@ -362,6 +362,43 @@ public class GitLabClient : IDisposable
         }
     }
 
+    public async Task AddGroupMemberAsync(string groupId, int userId, int accessLevel)
+    {
+        var payload = new { user_id = userId, access_level = accessLevel };
+        var json = JsonSerializer.Serialize(payload, _jsonOptions);
+        var content = new StringContent(json, Encoding.UTF8, "application/json");
+        
+        var response = await _httpClient.PostAsync($"{_baseUrl}/api/v4/groups/{groupId}/members", content);
+        
+        if (!response.IsSuccessStatusCode)
+        {
+            throw new GitLabApiException($"Failed to add group member: {response.StatusCode}", response.StatusCode);
+        }
+    }
+
+    public async Task RemoveGroupMemberAsync(string groupId, int userId)
+    {
+        var response = await _httpClient.DeleteAsync($"{_baseUrl}/api/v4/groups/{groupId}/members/{userId}");
+        
+        if (!response.IsSuccessStatusCode)
+        {
+            throw new GitLabApiException($"Failed to remove group member: {response.StatusCode}", response.StatusCode);
+        }
+    }
+
+    public async Task DeleteAllGroupMembersAsync(string groupId)
+    {
+        var members = await GetGroupMembersAsync(groupId);
+        foreach (var member in members)
+        {
+            var response = await _httpClient.DeleteAsync($"{_baseUrl}/api/v4/groups/{groupId}/members/{member.Id}");
+            if (!response.IsSuccessStatusCode)
+            {
+                throw new GitLabApiException($"Failed to delete group member: {response.StatusCode}", response.StatusCode);
+            }
+        }
+    }
+
     public void Dispose()
     {
         _httpClient?.Dispose();

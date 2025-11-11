@@ -215,6 +215,12 @@
                             Include Subgroups
                         </label>
                     </div>
+                    <div class="form-check mb-3">
+                        <input class="form-check-input" type="checkbox" @bind="includeProvisionedUsers" id="includeProvisionedUsers">
+                        <label class="form-check-label" for="includeProvisionedUsers">
+                            Include Provisioned Users
+                        </label>
+                    </div>
                 </div>
                 <div class="modal-footer">
                     <button type="button" class="btn btn-secondary" @onclick="CloseCopyModal">Cancel</button>
@@ -264,6 +270,12 @@
                             Sync Subgroups
                         </label>
                     </div>
+                    <div class="form-check mb-3">
+                        <input class="form-check-input" type="checkbox" @bind="syncProvisionedUsers" id="syncProvisionedUsers">
+                        <label class="form-check-label" for="syncProvisionedUsers">
+                            Sync Provisioned Users
+                        </label>
+                    </div>
                 </div>
                 <div class="modal-footer">
                     <button type="button" class="btn btn-secondary" @onclick="CloseSyncModal">Cancel</button>
@@ -300,12 +312,14 @@
     private bool includeSamlLinks = false;
     private bool includeVariables = false;
     private bool includeSubgroups = false;
+    private bool includeProvisionedUsers = false;
     private bool isCopying = false;
     private bool showSyncModal = false;
     private string syncGroupName = string.Empty;
     private bool syncSamlLinks = false;
     private bool syncVariables = false;
     private bool syncSubgroups = false;
+    private bool syncProvisionedUsers = false;
     private bool isSyncing = false;
 
     protected override async Task OnInitializedAsync()
@@ -620,6 +634,7 @@
         includeSamlLinks = false;
         includeVariables = false;
         includeSubgroups = false;
+        includeProvisionedUsers = false;
         showCopyModal = true;
     }
 
@@ -635,6 +650,7 @@
         syncSamlLinks = false;
         syncVariables = false;
         syncSubgroups = false;
+        syncProvisionedUsers = false;
         showSyncModal = true;
     }
 
@@ -707,6 +723,16 @@
                     LoadingService.SetLoading(true, "Copying subgroups...");
                     await CopySubgroups(sourceClient, targetClient, sourceGroup.Id.ToString(), createdGroup.Id.ToString());
                 }
+
+                if (includeProvisionedUsers)
+                {
+                    LoadingService.SetLoading(true, "Copying provisioned users...");
+                    var members = await sourceClient.GetGroupMembersAsync(sourceGroup.Id.ToString());
+                    foreach (var member in members)
+                    {
+                        await targetClient.AddGroupMemberAsync(createdGroup.Id.ToString(), member.Id, member.AccessLevel);
+                    }
+                }
             }
 
             showCopyModal = false;
@@ -755,6 +781,15 @@
                 foreach (var link in samlLinks)
                 {
                     await targetClient.CreateGroupSamlLinkAsync(createdSubgroup.Id.ToString(), link.SamlGroupName, link.AccessLevel);
+                }
+            }
+            
+            if (includeProvisionedUsers)
+            {
+                var members = await sourceClient.GetGroupMembersAsync(subgroup.Id.ToString());
+                foreach (var member in members)
+                {
+                    await targetClient.AddGroupMemberAsync(createdSubgroup.Id.ToString(), member.Id, member.AccessLevel);
                 }
             }
             
@@ -823,6 +858,17 @@
                 await SyncSubgroups(sourceClient, targetClient, sourceGroup.Id.ToString(), targetGroup.Id.ToString());
             }
 
+            if (syncProvisionedUsers)
+            {
+                LoadingService.SetLoading(true, "Syncing provisioned users...");
+                await targetClient.DeleteAllGroupMembersAsync(targetGroup.Id.ToString());
+                var members = await sourceClient.GetGroupMembersAsync(sourceGroup.Id.ToString());
+                foreach (var member in members)
+                {
+                    await targetClient.AddGroupMemberAsync(targetGroup.Id.ToString(), member.Id, member.AccessLevel);
+                }
+            }
+
             showSyncModal = false;
             await CompareResources(); // Refresh comparison
         }
@@ -888,6 +934,16 @@
                 foreach (var link in samlLinks)
                 {
                     await targetClient.CreateGroupSamlLinkAsync(targetSubgroup.Id.ToString(), link.SamlGroupName, link.AccessLevel);
+                }
+            }
+            
+            if (syncProvisionedUsers)
+            {
+                await targetClient.DeleteAllGroupMembersAsync(targetSubgroup.Id.ToString());
+                var members = await sourceClient.GetGroupMembersAsync(sourceSubgroup.Id.ToString());
+                foreach (var member in members)
+                {
+                    await targetClient.AddGroupMemberAsync(targetSubgroup.Id.ToString(), member.Id, member.AccessLevel);
                 }
             }
             

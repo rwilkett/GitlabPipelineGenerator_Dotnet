@@ -107,6 +107,8 @@ else if ((projects != null || searchResults != null) && analysisResult == null)
                         ShowBrowseButton="true" 
                         OnGroupClick="() => ConnectToGroup(group.Id.ToString(), group.Name)" 
                         OnViewSamlLinks="() => ViewSamlLinks(group.Id.ToString(), group.Name)" 
+                        OnViewProvisionedUsers="() => ViewProvisionedUsers(group.Id.ToString(), group.Name)" 
+                        OnViewSamlUsers="() => ViewSamlUsers(group.Id.ToString(), group.Name)" 
                         OnExportJson="() => ExportGroupJson(group.Id.ToString(), group.Name)" />
                 }
             </div>
@@ -125,6 +127,8 @@ else if ((projects != null || searchResults != null) && analysisResult == null)
                         OnGroupClick="() => OpenSubgroupTab(subgroup)" 
                         OnViewVariables="() => ShowVariables(subgroup.Variables)" 
                         OnViewSamlLinks="() => ViewSamlLinks(subgroup.Id.ToString(), subgroup.Name)" 
+                        OnViewProvisionedUsers="() => ViewProvisionedUsers(subgroup.Id.ToString(), subgroup.Name)" 
+                        OnViewSamlUsers="() => ViewSamlUsers(subgroup.Id.ToString(), subgroup.Name)" 
                         OnExportJson="() => ExportGroupJson(subgroup.Id.ToString(), subgroup.Name)" />
                 }
             </div>
@@ -307,6 +311,8 @@ else if (analysisResult != null)
 
 <VariablesModal Show="showVariablesModal" Variables="selectedVariables" OnClose="CloseVariablesModal" />
 <SamlGroupLinksModal Show="showSamlLinksModal" SamlLinks="selectedSamlLinks" OnClose="CloseSamlLinksModal" />
+<ProvisionedUsersModal Show="showProvisionedUsersModal" Members="selectedProvisionedUsers" OnClose="CloseProvisionedUsersModal" />
+<SamlUsersModal Show="showSamlUsersModal" Members="selectedSamlUsers" OnClose="CloseSamlUsersModal" />
 <GroupExportModal @ref="exportModal" Show="showExportModal" GroupName="exportGroupName" OnClose="CloseExportModal" OnExport="HandleGroupExport" />
 
 @code {
@@ -338,6 +344,10 @@ else if (analysisResult != null)
     private ProjectVariablesModel? selectedVariables;
     private bool showSamlLinksModal = false;
     private List<SamlGroupLinkModel>? selectedSamlLinks;
+    private bool showProvisionedUsersModal = false;
+    private List<GitlabPipelineGenerator.GitLabApiClient.Models.Member>? selectedProvisionedUsers;
+    private bool showSamlUsersModal = false;
+    private List<GitlabPipelineGenerator.GitLabApiClient.Models.Member>? selectedSamlUsers;
     private bool showExportModal = false;
     private string exportGroupId = string.Empty;
     private string exportGroupName = string.Empty;
@@ -851,6 +861,52 @@ else if (analysisResult != null)
     {
         showSamlLinksModal = false;
         selectedSamlLinks = null;
+    }
+    
+    private async Task ViewProvisionedUsers(string groupId, string groupName)
+    {
+        try
+        {
+            var gitlabClient = new GitlabPipelineGenerator.GitLabApiClient.GitLabClient(
+                connectionModel.ServerUrl, 
+                connectionModel.Token);
+            
+            selectedProvisionedUsers = await gitlabClient.GetGroupMembersAsync(groupId);
+            showProvisionedUsersModal = true;
+        }
+        catch (Exception ex)
+        {
+            errorMessage = $"Failed to load provisioned users for {groupName}: {ex.Message}";
+        }
+    }
+    
+    private void CloseProvisionedUsersModal()
+    {
+        showProvisionedUsersModal = false;
+        selectedProvisionedUsers = null;
+    }
+    
+    private async Task ViewSamlUsers(string groupId, string groupName)
+    {
+        try
+        {
+            var gitlabClient = new GitlabPipelineGenerator.GitLabApiClient.GitLabClient(
+                connectionModel.ServerUrl, 
+                connectionModel.Token);
+            
+            selectedSamlUsers = await gitlabClient.GetGroupMembersAsync(groupId);
+            showSamlUsersModal = true;
+        }
+        catch (Exception ex)
+        {
+            errorMessage = $"Failed to load SAML users for {groupName}: {ex.Message}";
+        }
+    }
+    
+    private void CloseSamlUsersModal()
+    {
+        showSamlUsersModal = false;
+        selectedSamlUsers = null;
     }
     
     private string GetAccessLevelName(int accessLevel)

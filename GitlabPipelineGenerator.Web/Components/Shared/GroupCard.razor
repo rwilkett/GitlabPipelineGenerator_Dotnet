@@ -26,6 +26,8 @@
                     <div class="d-flex gap-1 mt-2">
                         <button class="btn btn-sm btn-outline-info" @onclick="OnViewVariables" @onclick:stopPropagation="true">Variables</button>
                         <button class="btn btn-sm btn-outline-secondary" @onclick="OnViewSamlLinks" @onclick:stopPropagation="true">SAML Links</button>
+                        <button class="btn btn-sm btn-outline-primary" @onclick="OnViewProvisionedUsers" @onclick:stopPropagation="true">Users</button>
+                        <button class="btn btn-sm btn-outline-success" @onclick="OnViewSamlUsers" @onclick:stopPropagation="true">SAML Users</button>
                         <button class="btn btn-sm btn-outline-warning" @onclick="OnExportJson" @onclick:stopPropagation="true">Export JSON</button>
                     </div>
                 }
@@ -34,6 +36,8 @@
                     <br>
                     <div class="d-flex gap-1 mt-2">
                         <button class="btn btn-sm btn-outline-secondary" @onclick="OnViewSamlLinks" @onclick:stopPropagation="true">SAML Links</button>
+                        <button class="btn btn-sm btn-outline-primary" @onclick="OnViewProvisionedUsers" @onclick:stopPropagation="true">Users</button>
+                        <button class="btn btn-sm btn-outline-success" @onclick="OnViewSamlUsers" @onclick:stopPropagation="true">SAML Users</button>
                         <button class="btn btn-sm btn-outline-warning" @onclick="OnExportJson" @onclick:stopPropagation="true">Export JSON</button>
                     </div>
                 }
@@ -46,6 +50,12 @@
                     </button>
                     <button class="btn btn-outline-secondary" @onclick="OnViewSamlLinks" @onclick:stopPropagation="true">
                         SAML Links
+                    </button>
+                    <button class="btn btn-outline-primary" @onclick="OnViewProvisionedUsers" @onclick:stopPropagation="true">
+                        Users
+                    </button>
+                    <button class="btn btn-outline-success" @onclick="OnViewSamlUsers" @onclick:stopPropagation="true">
+                        SAML Users
                     </button>
                     <button class="btn btn-outline-warning" @onclick="OnExportJson" @onclick:stopPropagation="true">
                         Export JSON
@@ -64,5 +74,7 @@
     [Parameter] public EventCallback OnGroupClick { get; set; }
     [Parameter] public EventCallback OnViewVariables { get; set; }
     [Parameter] public EventCallback OnViewSamlLinks { get; set; }
+    [Parameter] public EventCallback OnViewProvisionedUsers { get; set; }
+    [Parameter] public EventCallback OnViewSamlUsers { get; set; }
     [Parameter] public EventCallback OnExportJson { get; set; }
 }
