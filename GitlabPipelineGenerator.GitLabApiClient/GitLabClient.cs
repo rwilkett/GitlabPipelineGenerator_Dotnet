@@ -399,6 +399,19 @@ public class GitLabClient : IDisposable
         }
     }
 
+    public async Task<List<User>> SearchUsersAsync(string search)
+    {
+        var response = await _httpClient.GetAsync($"{_baseUrl}/api/v4/users?search={Uri.EscapeDataString(search)}");
+        
+        if (!response.IsSuccessStatusCode)
+        {
+            throw new GitLabApiException($"Failed to search users: {response.StatusCode}", response.StatusCode);
+        }
+
+        var json = await response.Content.ReadAsStringAsync();
+        return JsonSerializer.Deserialize<List<User>>(json, _jsonOptions) ?? new List<User>();
+    }
+
     public void Dispose()
     {
         _httpClient?.Dispose();

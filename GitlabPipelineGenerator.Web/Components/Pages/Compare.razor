@@ -730,7 +730,19 @@
                     var members = await sourceClient.GetGroupMembersAsync(sourceGroup.Id.ToString());
                     foreach (var member in members)
                     {
-                        await targetClient.AddGroupMemberAsync(createdGroup.Id.ToString(), member.Id, member.AccessLevel);
+                        try
+                        {
+                            var targetUsers = await targetClient.SearchUsersAsync(member.Username);
+                            var targetUser = targetUsers.FirstOrDefault(u => u.Username.Equals(member.Username, StringComparison.OrdinalIgnoreCase));
+                            if (targetUser != null)
+                            {
+                                await targetClient.AddGroupMemberAsync(createdGroup.Id.ToString(), targetUser.Id, member.AccessLevel);
+                            }
+                        }
+                        catch
+                        {
+                            // Skip users that don't exist on target instance
+                        }
                     }
                 }
             }
@@ -789,7 +801,19 @@
                 var members = await sourceClient.GetGroupMembersAsync(subgroup.Id.ToString());
                 foreach (var member in members)
                 {
-                    await targetClient.AddGroupMemberAsync(createdSubgroup.Id.ToString(), member.Id, member.AccessLevel);
+                    try
+                    {
+                        var targetUsers = await targetClient.SearchUsersAsync(member.Username);
+                        var targetUser = targetUsers.FirstOrDefault(u => u.Username.Equals(member.Username, StringComparison.OrdinalIgnoreCase));
+                        if (targetUser != null)
+                        {
+                            await targetClient.AddGroupMemberAsync(createdSubgroup.Id.ToString(), targetUser.Id, member.AccessLevel);
+                        }
+                    }
+                    catch
+                    {
+                        // Skip users that don't exist on target instance
+                    }
                 }
             }
             
@@ -861,11 +885,27 @@
             if (syncProvisionedUsers)
             {
                 LoadingService.SetLoading(true, "Syncing provisioned users...");
-                await targetClient.DeleteAllGroupMembersAsync(targetGroup.Id.ToString());
-                var members = await sourceClient.GetGroupMembersAsync(sourceGroup.Id.ToString());
-                foreach (var member in members)
+                var sourceMembers = await sourceClient.GetGroupMembersAsync(sourceGroup.Id.ToString());
+                var targetMembers = await targetClient.GetGroupMembersAsync(targetGroup.Id.ToString());
+                
+                foreach (var sourceMember in sourceMembers)
                 {
-                    await targetClient.AddGroupMemberAsync(targetGroup.Id.ToString(), member.Id, member.AccessLevel);
+                    if (!targetMembers.Any(tm => tm.Username.Equals(sourceMember.Username, StringComparison.OrdinalIgnoreCase)))
+                    {
+                        try
+                        {
+                            var targetUsers = await targetClient.SearchUsersAsync(sourceMember.Username);
+                            var targetUser = targetUsers.FirstOrDefault(u => u.Username.Equals(sourceMember.Username, StringComparison.OrdinalIgnoreCase));
+                            if (targetUser != null)
+                            {
+                                await targetClient.AddGroupMemberAsync(targetGroup.Id.ToString(), targetUser.Id, sourceMember.AccessLevel);
+                            }
+                        }
+                        catch
+                        {
+                            // Skip users that don't exist on target instance
+                        }
+                    }
                 }
             }
 
@@ -939,11 +979,27 @@
             
             if (syncProvisionedUsers)
             {
-                await targetClient.DeleteAllGroupMembersAsync(targetSubgroup.Id.ToString());
-                var members = await sourceClient.GetGroupMembersAsync(sourceSubgroup.Id.ToString());
-                foreach (var member in members)
+                var sourceMembers = await sourceClient.GetGroupMembersAsync(sourceSubgroup.Id.ToString());
+                var targetMembers = await targetClient.GetGroupMembersAsync(targetSubgroup.Id.ToString());
+                
+                foreach (var sourceMember in sourceMembers)
                 {
-                    await targetClient.AddGroupMemberAsync(targetSubgroup.Id.ToString(), member.Id, member.AccessLevel);
+                    if (!targetMembers.Any(tm => tm.Username.Equals(sourceMember.Username, StringComparison.OrdinalIgnoreCase)))
+                    {
+                        try
+                        {
+                            var targetUsers = await targetClient.SearchUsersAsync(sourceMember.Username);
+                            var targetUser = targetUsers.FirstOrDefault(u => u.Username.Equals(sourceMember.Username, StringComparison.OrdinalIgnoreCase));
+                            if (targetUser != null)
+                            {
+                                await targetClient.AddGroupMemberAsync(targetSubgroup.Id.ToString(), targetUser.Id, sourceMember.AccessLevel);
+                            }
+                        }
+                        catch
+                        {
+                            // Skip users that don't exist on target instance
+                        }
+                    }
                 }
             }
             
