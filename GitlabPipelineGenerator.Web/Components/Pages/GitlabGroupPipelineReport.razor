@@ -1,0 +1,358 @@
+@page "/reports/gitlab-group-pipeline"
+@using GitlabPipelineGenerator.Web.Models
+@using GitlabPipelineGenerator.Web.Services
+@using GitlabPipelineGenerator.Core.Interfaces
+@inject IJSRuntime JSRuntime
+@inject LoadingService LoadingService
+@inject IGitLabAuthenticationService AuthService
+@inject ICredentialStorageService CredentialService
+
+<PageTitle>GitLab Group Pipeline Report</PageTitle>
+
+<h1>GitLab Group Pipeline Report</h1>
+
+<div class="card mb-3">
+    <div class="card-header">
+        <h4>Connection Settings</h4>
+    </div>
+    <div class="card-body">
+        <div class="row">
+            <div class="col-md-3">
+                <div class="form-group mb-3">
+                    <label>Stored Connection:</label>
+                    <select class="form-control" value="@selectedConnection" @onchange="OnConnectionSelected">
+                        <option value="">-- Select Connection --</option>
+                        @foreach (var connection in storedConnections)
+                        {
+                            <option value="@connection">@connection</option>
+                        }
+                    </select>
+                </div>
+            </div>
+            <div class="col-md-3">
+                <div class="form-group mb-3">
+                    <label>GitLab URL:</label>
+                    <input type="text" class="form-control" @bind="gitlabUrl" placeholder="https://gitlab.com" />
+                </div>
+            </div>
+            <div class="col-md-3">
+                <div class="form-group mb-3">
+                    <label>Access Token:</label>
+                    <input type="password" class="form-control" @bind="accessToken" placeholder="Your GitLab access token" />
+                </div>
+            </div>
+            <div class="col-md-3">
+                <div class="form-group mb-3">
+                    <label>Group Full Path:</label>
+                    <input type="text" class="form-control" @bind="groupPath" placeholder="group/subgroup" />
+                </div>
+            </div>
+        </div>
+        <button class="btn btn-primary" @onclick="GenerateReport" disabled="@isGenerating">
+            @if (isGenerating)
+            {
+                <span class="spinner-border spinner-border-sm" role="status"></span>
+                <span>Scanning...</span>
+            }
+            else
+            {
+                <span>Generate Report</span>
+            }
+        </button>
+    </div>
+</div>
+
+@if (reportData?.Any() == true)
+{
+    <div class="card">
+        <div class="card-header">
+            <h4>Pipeline Status for Group: @groupPath</h4>
+        </div>
+        <div class="card-body">
+            <div class="table-responsive">
+                <table class="table table-striped">
+                    <thead>
+                        <tr>
+                            <th>Project Name</th>
+                            <th>Pipeline Present</th>
+                            <th>Default Branch</th>
+                            <th>Last Activity</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @foreach (var project in reportData.OrderBy(p => p.ProjectName))
+                        {
+                            <tr>
+                                <td>@project.ProjectName</td>
+                                <td>
+                                    @if (project.PipelinePresent)
+                                    {
+                                        <span class="badge bg-success">True</span>
+                                    }
+                                    else
+                                    {
+                                        <span class="badge bg-danger">False</span>
+                                    }
+                                </td>
+                                <td>@project.DefaultBranch</td>
+                                <td>@project.LastActivity?.ToString("yyyy-MM-dd")</td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            </div>
+            
+            <div class="mt-3">
+                <div class="d-flex justify-content-between align-items-start">
+                    <div>
+                        <h5>Summary</h5>
+                        <p><strong>Total Projects:</strong> @reportData.Count</p>
+                        <p><strong>Projects with Pipeline:</strong> @reportData.Count(p => p.PipelinePresent)</p>
+                        <p><strong>Projects without Pipeline:</strong> @reportData.Count(p => !p.PipelinePresent)</p>
+                        <p><strong>Pipeline Coverage:</strong> @((reportData.Count > 0 ? (reportData.Count(p => p.PipelinePresent) * 100.0 / reportData.Count) : 0).ToString("F1"))%</p>
+                    </div>
+                    <button class="btn btn-success" @onclick="ExportToCsv">
+                        <i class="fas fa-download"></i> Export CSV
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+}
+
+@if (!string.IsNullOrEmpty(errorMessage))
+{
+    <div class="alert alert-danger mt-3">@errorMessage</div>
+}
+
+@code {
+    private string gitlabUrl = "https://gitlab.com";
+    private string accessToken = string.Empty;
+    private string groupPath = string.Empty;
+    private string selectedConnection = string.Empty;
+    private bool isGenerating = false;
+    private string? errorMessage;
+    private List<GitLabProjectPipelineItem>? reportData;
+    private List<string> storedConnections = new();
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadStoredConnections();
+        await LoadSavedSettings();
+    }
+
+    private async Task LoadSavedSettings()
+    {
+        try
+        {
+            var json = await JSRuntime.InvokeAsync<string>("localStorage.getItem", "gitlab-group-settings");
+            if (!string.IsNullOrEmpty(json))
+            {
+                var saved = System.Text.Json.JsonSerializer.Deserialize<GitLabGroupSettings>(json);
+                if (saved != null)
+                {
+                    gitlabUrl = saved.GitlabUrl ?? "https://gitlab.com";
+                    accessToken = saved.AccessToken ?? string.Empty;
+                    groupPath = saved.GroupPath ?? string.Empty;
+                }
+            }
+        }
+        catch
+        {
+            // Ignore errors loading settings
+        }
+    }
+
+    private async Task LoadStoredConnections()
+    {
+        try
+        {
+            var json = await JSRuntime.InvokeAsync<string>("localStorage.getItem", "gitlab-instances");
+            if (!string.IsNullOrEmpty(json))
+            {
+                var settings = System.Text.Json.JsonSerializer.Deserialize<GitLabSettingsModel>(json);
+                if (settings?.Instances != null)
+                {
+                    storedConnections = settings.Instances.Select(i => i.Name).ToList();
+                }
+            }
+        }
+        catch
+        {
+            // Ignore errors loading connections
+        }
+    }
+
+    private async Task OnConnectionSelected(ChangeEventArgs e)
+    {
+        selectedConnection = e.Value?.ToString() ?? string.Empty;
+        if (!string.IsNullOrEmpty(selectedConnection))
+        {
+            try
+            {
+                var json = await JSRuntime.InvokeAsync<string>("localStorage.getItem", "gitlab-instances");
+                if (!string.IsNullOrEmpty(json))
+                {
+                    var settings = System.Text.Json.JsonSerializer.Deserialize<GitLabSettingsModel>(json);
+                    var instance = settings?.Instances?.FirstOrDefault(i => i.Name == selectedConnection);
+                    if (instance != null)
+                    {
+                        gitlabUrl = instance.ServerUrl;
+                        accessToken = instance.Token;
+                    }
+                }
+            }
+            catch
+            {
+                // Ignore errors loading connection
+            }
+        }
+    }
+
+    private async Task GenerateReport()
+    {
+        if (string.IsNullOrEmpty(accessToken) || string.IsNullOrEmpty(groupPath))
+        {
+            errorMessage = "Please provide access token and group path.";
+            return;
+        }
+
+        await SaveSettings();
+
+        isGenerating = true;
+        errorMessage = null;
+        LoadingService.SetLoading(true, "Scanning GitLab group projects...");
+
+        try
+        {
+            GitlabPipelineGenerator.GitLabApiClient.GitLabClient client;
+            
+            var credentials = new GitlabPipelineGenerator.Core.Models.GitLab.GitLabConnectionOptions
+            {
+                InstanceUrl = gitlabUrl,
+                PersonalAccessToken = accessToken
+            };
+            client = await AuthService.AuthenticateAsync(credentials);
+
+            LoadingService.SetLoading(true, "Resolving group path...");
+            var group = await client.GetGroupByPathAsync(groupPath);
+            
+            LoadingService.SetLoading(true, "Loading group projects...");
+            var projects = await client.GetGroupProjectsAsync(group.Id.ToString(), perPage: 100);
+            
+            reportData = new List<GitLabProjectPipelineItem>();
+            
+            foreach (var project in projects)
+            {
+                LoadingService.SetLoading(true, $"Checking pipeline for: {project.Name}...");
+                
+                bool hasPipeline = await CheckForPipelineFile(client, project.Id.ToString(), project.DefaultBranch);
+                
+                reportData.Add(new GitLabProjectPipelineItem
+                {
+                    ProjectName = project.Name,
+                    PipelinePresent = hasPipeline,
+                    DefaultBranch = project.DefaultBranch,
+                    LastActivity = project.LastActivityAt
+                });
+            }
+        }
+        catch (Exception ex)
+        {
+            errorMessage = $"Error generating report: {ex.Message}";
+        }
+        finally
+        {
+            isGenerating = false;
+            LoadingService.SetLoading(false);
+        }
+    }
+
+    private async Task<bool> CheckForPipelineFile(GitlabPipelineGenerator.GitLabApiClient.GitLabClient client, string projectId, string branch)
+    {
+        try
+        {
+            await client.GetFileAsync(projectId, ".gitlab-ci.yml", branch);
+            return true;
+        }
+        catch
+        {
+            return false;
+        }
+    }
+
+    private async Task SaveSettings()
+    {
+        try
+        {
+            var settings = new GitLabGroupSettings
+            {
+                GitlabUrl = gitlabUrl,
+                AccessToken = accessToken,
+                GroupPath = groupPath
+            };
+            var json = System.Text.Json.JsonSerializer.Serialize(settings);
+            await JSRuntime.InvokeVoidAsync("localStorage.setItem", "gitlab-group-settings", json);
+        }
+        catch
+        {
+            // Ignore errors saving settings
+        }
+    }
+
+    private async Task ExportToCsv()
+    {
+        if (reportData?.Any() != true) return;
+
+        var csv = new System.Text.StringBuilder();
+        csv.AppendLine("Project Name,Pipeline Present,Default Branch,Last Activity");
+        
+        foreach (var item in reportData.OrderBy(p => p.ProjectName))
+        {
+            csv.AppendLine($"\"{item.ProjectName}\",{item.PipelinePresent},{item.DefaultBranch},{item.LastActivity?.ToString("yyyy-MM-dd")}");
+        }
+
+        var fileName = $"gitlab-group-pipeline-report-{groupPath.Replace("/", "-")}-{DateTime.Now:yyyy-MM-dd-HHmm}.csv";
+        var bytes = System.Text.Encoding.UTF8.GetBytes(csv.ToString());
+        var base64 = Convert.ToBase64String(bytes);
+        
+        await JSRuntime.InvokeVoidAsync("downloadFile", fileName, base64, "text/csv");
+    }
+
+
+
+    public class GitLabProjectPipelineItem
+    {
+        public string ProjectName { get; set; } = string.Empty;
+        public bool PipelinePresent { get; set; }
+        public string DefaultBranch { get; set; } = string.Empty;
+        public DateTime? LastActivity { get; set; }
+    }
+
+    public class GitLabGroupSettings
+    {
+        public string? GitlabUrl { get; set; }
+        public string? AccessToken { get; set; }
+        public string? GroupPath { get; set; }
+    }
+}
+
+<script>
+    window.downloadFile = (filename, base64Data, contentType) => {
+        const byteCharacters = atob(base64Data);
+        const byteNumbers = new Array(byteCharacters.length);
+        for (let i = 0; i < byteCharacters.length; i++) {
+            byteNumbers[i] = byteCharacters.charCodeAt(i);
+        }
+        const byteArray = new Uint8Array(byteNumbers);
+        const blob = new Blob([byteArray], { type: contentType });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = filename;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        URL.revokeObjectURL(url);
+    };
+</script>

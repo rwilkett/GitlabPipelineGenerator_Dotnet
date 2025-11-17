@@ -1,0 +1,254 @@
+@page "/reports/gocd-gitlab-materials"
+@using GitlabPipelineGenerator.Web.Models
+@using GitlabPipelineGenerator.Web.Services
+@inject IJSRuntime JSRuntime
+@inject LoadingService LoadingService
+
+<PageTitle>GoCD GitLab.com Materials Report</PageTitle>
+
+<h1>GoCD GitLab.com Materials Report</h1>
+
+<div class="card mb-3">
+    <div class="card-header">
+        <h4>Connection Settings</h4>
+    </div>
+    <div class="card-body">
+        <div class="row">
+            <div class="col-md-6">
+                <div class="form-group mb-3">
+                    <label>GoCD Server URL:</label>
+                    <input type="text" class="form-control" @bind="connectionModel.ServerUrl" placeholder="https://your-gocd-server.com" />
+                </div>
+            </div>
+            <div class="col-md-6">
+                <div class="form-group mb-3">
+                    <label>Authentication Token:</label>
+                    <input type="password" class="form-control" @bind="connectionModel.BearerToken" placeholder="Your GoCD API token" />
+                </div>
+            </div>
+        </div>
+        <button class="btn btn-primary" @onclick="GenerateReport" disabled="@isGenerating">
+            @if (isGenerating)
+            {
+                <span class="spinner-border spinner-border-sm" role="status"></span>
+                <span>Generating...</span>
+            }
+            else
+            {
+                <span>Generate Report</span>
+            }
+        </button>
+    </div>
+</div>
+
+@if (reportData?.Any() == true)
+{
+    <div class="card">
+        <div class="card-header">
+            <h4>Pipeline Groups with GitLab.com Materials</h4>
+        </div>
+        <div class="card-body">
+            <div class="table-responsive">
+                <table class="table table-striped">
+                    <thead>
+                        <tr>
+                            <th>Pipeline Group</th>
+                            <th>GitLab.com Pipeline Count</th>
+                            <th>Total Pipelines</th>
+                            <th>Percentage</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @foreach (var group in reportData.OrderByDescending(g => g.GitLabPipelineCount))
+                        {
+                            <tr>
+                                <td>@group.GroupName</td>
+                                <td>@group.GitLabPipelineCount</td>
+                                <td>@group.TotalPipelineCount</td>
+                                <td>@((group.TotalPipelineCount > 0 ? (group.GitLabPipelineCount * 100.0 / group.TotalPipelineCount) : 0).ToString("F1"))%</td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            </div>
+            
+            <div class="mt-3">
+                <div class="d-flex justify-content-between align-items-start">
+                    <div>
+                        <h5>Summary</h5>
+                        <p><strong>Total Groups:</strong> @reportData.Count</p>
+                        <p><strong>Groups with GitLab.com Materials:</strong> @reportData.Count(g => g.GitLabPipelineCount > 0)</p>
+                        <p><strong>Total GitLab.com Pipelines:</strong> @reportData.Sum(g => g.GitLabPipelineCount)</p>
+                        <p><strong>Total Pipelines:</strong> @reportData.Sum(g => g.TotalPipelineCount)</p>
+                    </div>
+                    <button class="btn btn-success" @onclick="ExportToCsv">
+                        <i class="fas fa-download"></i> Export CSV
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+}
+
+@if (!string.IsNullOrEmpty(errorMessage))
+{
+    <div class="alert alert-danger mt-3">@errorMessage</div>
+}
+
+@code {
+    private GOCDConnectionModel connectionModel = new();
+    private bool isGenerating = false;
+    private string? errorMessage;
+    private List<GitLabMaterialsReportItem>? reportData;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadSavedSettings();
+    }
+
+    private async Task LoadSavedSettings()
+    {
+        try
+        {
+            var json = await JSRuntime.InvokeAsync<string>("localStorage.getItem", "gocd-settings");
+            if (!string.IsNullOrEmpty(json))
+            {
+                var saved = System.Text.Json.JsonSerializer.Deserialize<GOCDConnectionModel>(json);
+                if (saved != null)
+                {
+                    connectionModel.ServerUrl = saved.ServerUrl;
+                    connectionModel.BearerToken = saved.BearerToken;
+                }
+            }
+        }
+        catch
+        {
+            // Ignore errors loading settings
+        }
+    }
+
+    private async Task GenerateReport()
+    {
+        if (string.IsNullOrEmpty(connectionModel.ServerUrl) || string.IsNullOrEmpty(connectionModel.BearerToken))
+        {
+            errorMessage = "Please provide GoCD server URL and authentication token.";
+            return;
+        }
+
+        await SaveSettings();
+
+        isGenerating = true;
+        errorMessage = null;
+        LoadingService.SetLoading(true, "Generating GitLab.com materials report...");
+
+        try
+        {
+            var gocdClient = new GitlabPipelineGenerator.GOCDApiClient.GOCDApiClient(connectionModel.ServerUrl, connectionModel.BearerToken);
+            
+            LoadingService.SetLoading(true, "Loading pipeline groups...");
+            var groups = await gocdClient.GetPipelineGroupsAsync();
+            
+            reportData = new List<GitLabMaterialsReportItem>();
+            
+            foreach (var group in groups)
+            {
+                LoadingService.SetLoading(true, $"Analyzing group: {group.Name}...");
+                
+                int gitlabPipelineCount = 0;
+                int totalPipelineCount = group.Pipelines.Count;
+                
+                foreach (var pipeline in group.Pipelines)
+                {
+                    try
+                    {
+                        var config = await gocdClient.GetPipelineConfigAsync(pipeline.Name);
+                        if (config?.Materials?.Any(m => m.Attributes?.Url?.StartsWith("https://gitlab.com", StringComparison.OrdinalIgnoreCase) == true) == true)
+                        {
+                            gitlabPipelineCount++;
+                        }
+                    }
+                    catch
+                    {
+                        // Skip pipelines with config access issues
+                    }
+                }
+                
+                reportData.Add(new GitLabMaterialsReportItem
+                {
+                    GroupName = group.Name,
+                    GitLabPipelineCount = gitlabPipelineCount,
+                    TotalPipelineCount = totalPipelineCount
+                });
+            }
+        }
+        catch (Exception ex)
+        {
+            errorMessage = $"Error generating report: {ex.Message}";
+        }
+        finally
+        {
+            isGenerating = false;
+            LoadingService.SetLoading(false);
+        }
+    }
+
+    private async Task SaveSettings()
+    {
+        try
+        {
+            var json = System.Text.Json.JsonSerializer.Serialize(connectionModel);
+            await JSRuntime.InvokeVoidAsync("localStorage.setItem", "gocd-settings", json);
+        }
+        catch
+        {
+            // Ignore errors saving settings
+        }
+    }
+
+    private async Task ExportToCsv()
+    {
+        if (reportData?.Any() != true) return;
+
+        var csv = new System.Text.StringBuilder();
+        csv.AppendLine("Pipeline Group,GitLab.com Pipeline Count,Total Pipelines,Percentage");
+        
+        foreach (var item in reportData.OrderByDescending(g => g.GitLabPipelineCount))
+        {
+            var percentage = item.TotalPipelineCount > 0 ? (item.GitLabPipelineCount * 100.0 / item.TotalPipelineCount) : 0;
+            csv.AppendLine($"\"{item.GroupName}\",{item.GitLabPipelineCount},{item.TotalPipelineCount},{percentage:F1}");
+        }
+
+        var fileName = $"gocd-gitlab-materials-report-{DateTime.Now:yyyy-MM-dd-HHmm}.csv";
+        var bytes = System.Text.Encoding.UTF8.GetBytes(csv.ToString());
+        var base64 = Convert.ToBase64String(bytes);
+        
+        await JSRuntime.InvokeVoidAsync("downloadFile", fileName, base64, "text/csv");
+    }
+
+    public class GitLabMaterialsReportItem
+    {
+        public string GroupName { get; set; } = string.Empty;
+        public int GitLabPipelineCount { get; set; }
+        public int TotalPipelineCount { get; set; }
+    }
+}
+
+<script>
+    window.downloadFile = (filename, base64Data, contentType) => {
+        const byteCharacters = atob(base64Data);
+        const byteNumbers = new Array(byteCharacters.length);
+        for (let i = 0; i < byteCharacters.length; i++) {
+            byteNumbers[i] = byteCharacters.charCodeAt(i);
+        }
+        const byteArray = new Uint8Array(byteNumbers);
+        const blob = new Blob([byteArray], { type: contentType });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = filename;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        URL.revokeObjectURL(url);
+    };
+</script>
