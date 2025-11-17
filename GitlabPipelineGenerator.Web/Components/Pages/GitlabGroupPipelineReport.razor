@@ -237,25 +237,8 @@
             LoadingService.SetLoading(true, "Resolving group path...");
             var group = await client.GetGroupByPathAsync(groupPath);
             
-            LoadingService.SetLoading(true, "Loading group projects...");
-            var projects = await client.GetGroupProjectsAsync(group.Id.ToString(), perPage: 100);
-            
             reportData = new List<GitLabProjectPipelineItem>();
-            
-            foreach (var project in projects)
-            {
-                LoadingService.SetLoading(true, $"Checking pipeline for: {project.Name}...");
-                
-                bool hasPipeline = await CheckForPipelineFile(client, project.Id.ToString(), project.DefaultBranch);
-                
-                reportData.Add(new GitLabProjectPipelineItem
-                {
-                    ProjectName = project.Name,
-                    PipelinePresent = hasPipeline,
-                    DefaultBranch = project.DefaultBranch,
-                    LastActivity = project.LastActivityAt
-                });
-            }
+            await CollectProjectsRecursively(client, group.Id.ToString(), group.FullPath);
         }
         catch (Exception ex)
         {
@@ -265,6 +248,34 @@
         {
             isGenerating = false;
             LoadingService.SetLoading(false);
+        }
+    }
+
+    private async Task CollectProjectsRecursively(GitlabPipelineGenerator.GitLabApiClient.GitLabClient client, string groupId, string groupPath)
+    {
+        LoadingService.SetLoading(true, $"Loading projects from: {groupPath}...");
+        var projects = await client.GetGroupProjectsAsync(groupId, perPage: 100);
+        
+        foreach (var project in projects)
+        {
+            LoadingService.SetLoading(true, $"Checking pipeline for: {project.Name}...");
+            bool hasPipeline = await CheckForPipelineFile(client, project.Id.ToString(), project.DefaultBranch);
+            
+            reportData!.Add(new GitLabProjectPipelineItem
+            {
+                ProjectName = project.Name,
+                PipelinePresent = hasPipeline,
+                DefaultBranch = project.DefaultBranch,
+                LastActivity = project.LastActivityAt
+            });
+        }
+        
+        LoadingService.SetLoading(true, $"Loading subgroups from: {groupPath}...");
+        var subgroups = await client.GetSubgroupsAsync(groupId, perPage: 100);
+        
+        foreach (var subgroup in subgroups)
+        {
+            await CollectProjectsRecursively(client, subgroup.Id.ToString(), subgroup.FullPath);
         }
     }
 
