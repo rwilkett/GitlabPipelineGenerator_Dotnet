@@ -48,6 +48,45 @@
                 </div>
             </div>
         </div>
+        <div class="row">
+            <div class="col-md-12">
+                <div class="form-check mb-3">
+                    <input class="form-check-input" type="checkbox" @bind="showGocdPipelines" id="showGocdPipelines">
+                    <label class="form-check-label" for="showGocdPipelines">
+                        Show GOCD Pipelines
+                    </label>
+                </div>
+            </div>
+        </div>
+        @if (showGocdPipelines)
+        {
+            <div class="row">
+                @if (hasStoredGocdConnection)
+                {
+                    <div class="col-md-4">
+                        <div class="form-group mb-3">
+                            <label>GOCD Connection:</label>
+                            <select class="form-control" value="@selectedGocdConnection" @onchange="OnGocdConnectionSelected">
+                                <option value="">-- Manual Entry --</option>
+                                <option value="stored">Use Stored Connection</option>
+                            </select>
+                        </div>
+                    </div>
+                }
+                <div class="@(hasStoredGocdConnection ? "col-md-4" : "col-md-6")">
+                    <div class="form-group mb-3">
+                        <label>GoCD Server URL:</label>
+                        <input type="text" class="form-control" @bind="gocdServerUrl" placeholder="https://your-gocd-server.com" disabled="@(selectedGocdConnection == "stored")" />
+                    </div>
+                </div>
+                <div class="@(hasStoredGocdConnection ? "col-md-4" : "col-md-6")">
+                    <div class="form-group mb-3">
+                        <label>GoCD Token:</label>
+                        <input type="password" class="form-control" @bind="gocdToken" placeholder="Your GoCD API token" disabled="@(selectedGocdConnection == "stored")" />
+                    </div>
+                </div>
+            </div>
+        }
         <button class="btn btn-primary" @onclick="GenerateReport" disabled="@isGenerating">
             @if (isGenerating)
             {
@@ -77,26 +116,44 @@
                             <th>Pipeline Present</th>
                             <th>Default Branch</th>
                             <th>Last Activity</th>
+                            @if (showGocdPipelines)
+                            {
+                                <th>Project URL</th>
+                                <th>GOCD Pipeline Group</th>
+                                <th>GOCD Pipeline Name</th>
+                            }
                         </tr>
                     </thead>
                     <tbody>
-                        @foreach (var project in reportData.OrderBy(p => p.ProjectName))
+                        @foreach (var grouping in reportData.GroupBy(p => p.GroupPath).OrderBy(g => g.Key))
                         {
-                            <tr>
-                                <td>@project.ProjectName</td>
-                                <td>
-                                    @if (project.PipelinePresent)
-                                    {
-                                        <span class="badge bg-success">True</span>
-                                    }
-                                    else
-                                    {
-                                        <span class="badge bg-danger">False</span>
-                                    }
-                                </td>
-                                <td>@project.DefaultBranch</td>
-                                <td>@project.LastActivity?.ToString("yyyy-MM-dd")</td>
+                            <tr class="table-secondary">
+                                <td colspan="@(showGocdPipelines ? 7 : 4)"><strong>@grouping.Key</strong></td>
                             </tr>
+                            @foreach (var project in grouping.OrderBy(p => p.ProjectName))
+                            {
+                                <tr>
+                                    <td style="padding-left: 1.5rem;">@project.ProjectName</td>
+                                    <td>
+                                        @if (project.PipelinePresent)
+                                        {
+                                            <span class="badge bg-success">True</span>
+                                        }
+                                        else
+                                        {
+                                            <span class="badge bg-danger">False</span>
+                                        }
+                                    </td>
+                                    <td>@project.DefaultBranch</td>
+                                    <td>@project.LastActivity?.ToString("yyyy-MM-dd")</td>
+                                    @if (showGocdPipelines)
+                                    {
+                                        <td>@project.ProjectUrl</td>
+                                        <td>@project.GocdPipelineGroup</td>
+                                        <td>@project.GocdPipelineName</td>
+                                    }
+                                </tr>
+                            }
                         }
                     </tbody>
                 </table>
@@ -130,6 +187,11 @@
     private string accessToken = string.Empty;
     private string groupPath = string.Empty;
     private string selectedConnection = string.Empty;
+    private bool showGocdPipelines = false;
+    private string selectedGocdConnection = string.Empty;
+    private string gocdServerUrl = string.Empty;
+    private string gocdToken = string.Empty;
+    private bool hasStoredGocdConnection = false;
     private bool isGenerating = false;
     private string? errorMessage;
     private List<GitLabProjectPipelineItem>? reportData;
@@ -176,6 +238,16 @@
                     storedConnections = settings.Instances.Select(i => i.Name).ToList();
                 }
             }
+            
+            var gocdJson = await JSRuntime.InvokeAsync<string>("localStorage.getItem", "gocd-settings");
+            if (!string.IsNullOrEmpty(gocdJson))
+            {
+                var gocdSettings = System.Text.Json.JsonSerializer.Deserialize<GOCDConnectionModel>(gocdJson);
+                if (gocdSettings != null && !string.IsNullOrEmpty(gocdSettings.ServerUrl))
+                {
+                    hasStoredGocdConnection = true;
+                }
+            }
         }
         catch
         {
@@ -206,6 +278,36 @@
             {
                 // Ignore errors loading connection
             }
+        }
+    }
+
+    private async Task OnGocdConnectionSelected(ChangeEventArgs e)
+    {
+        selectedGocdConnection = e.Value?.ToString() ?? string.Empty;
+        if (selectedGocdConnection == "stored")
+        {
+            try
+            {
+                var json = await JSRuntime.InvokeAsync<string>("localStorage.getItem", "gocd-settings");
+                if (!string.IsNullOrEmpty(json))
+                {
+                    var gocdSettings = System.Text.Json.JsonSerializer.Deserialize<GOCDConnectionModel>(json);
+                    if (gocdSettings != null)
+                    {
+                        gocdServerUrl = gocdSettings.ServerUrl;
+                        gocdToken = gocdSettings.BearerToken ?? string.Empty;
+                    }
+                }
+            }
+            catch
+            {
+                // Ignore errors loading GOCD connection
+            }
+        }
+        else
+        {
+            gocdServerUrl = string.Empty;
+            gocdToken = string.Empty;
         }
     }
 
@@ -256,18 +358,44 @@
         LoadingService.SetLoading(true, $"Loading projects from: {groupPath}...");
         var projects = await client.GetGroupProjectsAsync(groupId, perPage: 100);
         
+        GitlabPipelineGenerator.GOCDApiClient.GOCDApiClient? gocdClient = null;
+        List<GitlabPipelineGenerator.GOCDApiClient.Models.PipelineGroup>? gocdGroups = null;
+        
+        if (showGocdPipelines && !string.IsNullOrEmpty(gocdServerUrl) && !string.IsNullOrEmpty(gocdToken))
+        {
+            try
+            {
+                LoadingService.SetLoading(true, "Loading GOCD pipeline groups...");
+                gocdClient = new GitlabPipelineGenerator.GOCDApiClient.GOCDApiClient(gocdServerUrl, gocdToken);
+                gocdGroups = await gocdClient.GetPipelineGroupsAsync();
+            }
+            catch
+            {
+                // Ignore GOCD connection errors
+            }
+        }
+        
         foreach (var project in projects)
         {
             LoadingService.SetLoading(true, $"Checking pipeline for: {project.Name}...");
             bool hasPipeline = await CheckForPipelineFile(client, project.Id.ToString(), project.DefaultBranch);
             
-            reportData!.Add(new GitLabProjectPipelineItem
+            var projectItem = new GitLabProjectPipelineItem
             {
                 ProjectName = project.Name,
                 PipelinePresent = hasPipeline,
                 DefaultBranch = project.DefaultBranch,
-                LastActivity = project.LastActivityAt
-            });
+                LastActivity = project.LastActivityAt,
+                ProjectUrl = project.HttpUrlToRepo,
+                GroupPath = groupPath
+            };
+            
+            if (showGocdPipelines && gocdGroups != null)
+            {
+                await FindMatchingGocdPipeline(gocdClient!, gocdGroups, projectItem);
+            }
+            
+            reportData!.Add(projectItem);
         }
         
         LoadingService.SetLoading(true, $"Loading subgroups from: {groupPath}...");
@@ -289,6 +417,34 @@
         catch
         {
             return false;
+        }
+    }
+
+    private async Task FindMatchingGocdPipeline(GitlabPipelineGenerator.GOCDApiClient.GOCDApiClient gocdClient, List<GitlabPipelineGenerator.GOCDApiClient.Models.PipelineGroup> gocdGroups, GitLabProjectPipelineItem projectItem)
+    {
+        foreach (var group in gocdGroups)
+        {
+            foreach (var pipeline in group.Pipelines)
+            {
+                try
+                {
+                    var config = await gocdClient.GetPipelineConfigAsync(pipeline.Name);
+                    var matchingMaterial = config?.Materials?.FirstOrDefault(m => 
+                        !string.IsNullOrEmpty(m.Attributes?.Url) && 
+                        projectItem.ProjectUrl.Equals(m.Attributes.Url, StringComparison.OrdinalIgnoreCase));
+                    
+                    if (matchingMaterial != null)
+                    {
+                        projectItem.GocdPipelineGroup = group.Name;
+                        projectItem.GocdPipelineName = pipeline.Name;
+                        return;
+                    }
+                }
+                catch
+                {
+                    // Skip pipelines with config access issues
+                }
+            }
         }
     }
 
@@ -316,11 +472,21 @@
         if (reportData?.Any() != true) return;
 
         var csv = new System.Text.StringBuilder();
-        csv.AppendLine("Project Name,Pipeline Present,Default Branch,Last Activity");
-        
-        foreach (var item in reportData.OrderBy(p => p.ProjectName))
+        if (showGocdPipelines)
         {
-            csv.AppendLine($"\"{item.ProjectName}\",{item.PipelinePresent},{item.DefaultBranch},{item.LastActivity?.ToString("yyyy-MM-dd")}");
+            csv.AppendLine("Group Path,Project Name,Pipeline Present,Default Branch,Last Activity,Project URL,GOCD Pipeline Group,GOCD Pipeline Name");
+            foreach (var item in reportData.OrderBy(p => p.GroupPath).ThenBy(p => p.ProjectName))
+            {
+                csv.AppendLine($"\"{item.GroupPath}\",\"{item.ProjectName}\",{item.PipelinePresent},{item.DefaultBranch},{item.LastActivity?.ToString("yyyy-MM-dd")},\"{item.ProjectUrl}\",\"{item.GocdPipelineGroup}\",\"{item.GocdPipelineName}\"");
+            }
+        }
+        else
+        {
+            csv.AppendLine("Group Path,Project Name,Pipeline Present,Default Branch,Last Activity");
+            foreach (var item in reportData.OrderBy(p => p.GroupPath).ThenBy(p => p.ProjectName))
+            {
+                csv.AppendLine($"\"{item.GroupPath}\",\"{item.ProjectName}\",{item.PipelinePresent},{item.DefaultBranch},{item.LastActivity?.ToString("yyyy-MM-dd")}");
+            }
         }
 
         var fileName = $"gitlab-group-pipeline-report-{groupPath.Replace("/", "-")}-{DateTime.Now:yyyy-MM-dd-HHmm}.csv";
@@ -338,6 +504,10 @@
         public bool PipelinePresent { get; set; }
         public string DefaultBranch { get; set; } = string.Empty;
         public DateTime? LastActivity { get; set; }
+        public string ProjectUrl { get; set; } = string.Empty;
+        public string? GocdPipelineGroup { get; set; }
+        public string? GocdPipelineName { get; set; }
+        public string GroupPath { get; set; } = string.Empty;
     }
 
     public class GitLabGroupSettings
