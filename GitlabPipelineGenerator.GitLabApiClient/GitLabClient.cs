@@ -322,9 +322,46 @@ public class GitLabClient : IDisposable
         return JsonSerializer.Deserialize<Group>(responseJson, _jsonOptions) ?? throw new GitLabApiException("Failed to deserialize created subgroup");
     }
 
-    public async Task CreateGroupVariableAsync(string groupId, string key, string value, string variableType, bool @protected, bool masked, string environmentScope)
+    public async Task CreateGroupVariableAsync(string groupId, string key, string value, string variableType = "env_var", bool @protected = false, bool masked = false, string environmentScope = "*", string? description = null, bool raw = false, bool hidden = false)
     {
-        var payload = new { key, value, variable_type = variableType, @protected, masked, environment_scope = environmentScope };
+        // Ensure value is not null or empty and handle masked variables
+        if (string.IsNullOrEmpty(value))
+        {
+            value = "placeholder_value";
+        }
+        
+        // If variable is masked, we can't copy the actual value
+        if (masked && value.Length > 0)
+        {
+            value = "masked_variable_placeholder";
+        }
+        
+        var payload = new Dictionary<string, object>
+        {
+            ["key"] = key,
+            ["value"] = value,
+            ["variable_type"] = variableType,
+            ["protected"] = @protected,
+            ["raw"] = raw,
+            ["environment_scope"] = environmentScope
+        };
+        
+        // Use masked_and_hidden when both are true, otherwise use individual flags
+        if (masked && hidden)
+        {
+            payload["masked_and_hidden"] = true;
+        }
+        else
+        {
+            payload["masked"] = masked;
+            payload["hidden"] = hidden;
+        }
+        
+        if (!string.IsNullOrEmpty(description))
+        {
+            payload["description"] = description;
+        }
+
         var json = JsonSerializer.Serialize(payload, _jsonOptions);
         var content = new StringContent(json, Encoding.UTF8, "application/json");
 
@@ -332,7 +369,9 @@ public class GitLabClient : IDisposable
 
         if (!response.IsSuccessStatusCode)
         {
-            throw new GitLabApiException($"Failed to create group variable: {response.StatusCode}", response.StatusCode);
+            var errorContent = await response.Content.ReadAsStringAsync();
+            var debugInfo = $"Payload: {json} | Error: {errorContent}";
+            throw new GitLabApiException($"Failed to create group variable: {response.StatusCode} - {debugInfo}", response.StatusCode);
         }
     }
 
@@ -424,6 +463,62 @@ public class GitLabClient : IDisposable
 
         var json = await response.Content.ReadAsStringAsync();
         return JsonSerializer.Deserialize<List<User>>(json, _jsonOptions) ?? new List<User>();
+    }
+
+    public async Task CreateProjectVariableAsync(string projectIdOrPath, string key, string value, string variableType = "env_var", bool @protected = false, bool masked = false, string environmentScope = "*", string? description = null, bool raw = false, bool hidden = false)
+    {
+        var encodedPath = Uri.EscapeDataString(projectIdOrPath);
+        
+        // Ensure value is not null or empty and handle masked variables
+        if (string.IsNullOrEmpty(value))
+        {
+            value = "placeholder_value";
+        }
+        
+        // If variable is masked, we can't copy the actual value
+        if (masked && value.Length > 0)
+        {
+            value = "masked_variable_placeholder";
+        }
+        
+        var payload = new Dictionary<string, object>
+        {
+            ["key"] = key,
+            ["value"] = value,
+            ["variable_type"] = variableType,
+            ["protected"] = @protected,
+            ["raw"] = raw,
+            ["environment_scope"] = environmentScope
+        };
+        
+        // Use masked_and_hidden when both are true, otherwise use individual flags
+        if (masked && hidden)
+        {
+            payload["masked_and_hidden"] = true;
+        }
+        else
+        {
+            payload["masked"] = masked;
+            payload["hidden"] = hidden;
+        }
+        
+        if (!string.IsNullOrEmpty(description))
+        {
+            payload["description"] = description;
+        }
+
+        var json = JsonSerializer.Serialize(payload, _jsonOptions);
+        var content = new StringContent(json, Encoding.UTF8, "application/json");
+
+        var response = await _httpClient.PostAsync($"{_baseUrl}/api/v4/projects/{encodedPath}/variables", content);
+
+        if (!response.IsSuccessStatusCode)
+        {
+            var errorContent = await response.Content.ReadAsStringAsync();
+            // Log the payload for debugging
+            var debugInfo = $"Payload: {json} | Error: {errorContent}";
+            throw new GitLabApiException($"Failed to create project variable: {response.StatusCode} - {debugInfo}", response.StatusCode);
+        }
     }
 
     public void Dispose()
