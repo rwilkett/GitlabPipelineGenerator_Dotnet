@@ -1,0 +1,163 @@
+@page "/reports/gocd-deployments"
+@using GitlabPipelineGenerator.Web.Models
+@using GitlabPipelineGenerator.Web.Services
+@using GitlabPipelineGenerator.GOCDApiClient
+@inject IJSRuntime JSRuntime
+@inject LoadingService LoadingService
+
+<PageTitle>GoCD Production Deployments</PageTitle>
+
+<h1>GoCD Production Deployments</h1>
+
+<div class="card">
+    <div class="card-body">
+        <p>Generate a report showing GoCD production deployments within a date range.</p>
+        <div class="row">
+            <div class="col-md-6">
+                <div class="mb-3">
+                    <label class="form-label">Start Date:</label>
+                    <input type="date" class="form-control" @bind="startDate" />
+                </div>
+            </div>
+            <div class="col-md-6">
+                <div class="mb-3">
+                    <label class="form-label">End Date:</label>
+                    <input type="date" class="form-control" @bind="endDate" />
+                </div>
+            </div>
+        </div>
+        <button class="btn btn-primary" @onclick="GenerateReport" disabled="@isGenerating">
+            @if (isGenerating)
+            {
+                <span class="spinner-border spinner-border-sm" role="status"></span>
+                <span>Generating...</span>
+            }
+            else
+            {
+                <span>Generate Report</span>
+            }
+        </button>
+    </div>
+</div>
+
+@if (deployments?.Any() == true)
+{
+    <div class="mt-4">
+        <div class="d-flex justify-content-between align-items-center mb-3">
+            <h3>Production Deployments (@deployments.Count total)</h3>
+            <button class="btn btn-success" @onclick="ExportToCsv">Export to CSV</button>
+        </div>
+        
+        <div class="table-responsive">
+            <table class="table table-striped">
+                <thead>
+                    <tr>
+                        <th>Group Name</th>
+                        <th>Pipeline Name</th>
+                        <th>Pipeline Label</th>
+                        <th>Production Deploy Date</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @foreach (var deployment in deployments)
+                    {
+                        <tr>
+                            <td>@deployment.GroupName</td>
+                            <td>@deployment.PipelineName</td>
+                            <td>@deployment.PipelineLabel</td>
+                            <td>@deployment.ProdDeployDate.ToString("yyyy-MM-dd HH:mm:ss")</td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        </div>
+    </div>
+}
+else if (deployments != null && !deployments.Any())
+{
+    <div class="alert alert-info mt-4">
+        No production deployments found for the specified date range.
+    </div>
+}
+
+@if (!string.IsNullOrEmpty(errorMessage))
+{
+    <div class="alert alert-danger mt-3">@errorMessage</div>
+}
+
+@code {
+    private List<ProductionDeployment>? deployments;
+    private bool isGenerating = false;
+    private string? errorMessage;
+    private DateTime startDate = DateTime.Today.AddDays(-30);
+    private DateTime endDate = DateTime.Today;
+
+    private async Task GenerateReport()
+    {
+        isGenerating = true;
+        errorMessage = null;
+        LoadingService.SetLoading(true, "Loading GoCD settings...");
+
+        try
+        {
+            var json = await JSRuntime.InvokeAsync<string>("localStorage.getItem", "gocd-settings");
+            if (string.IsNullOrEmpty(json))
+            {
+                errorMessage = "No GoCD settings found. Please configure GoCD connection in Settings.";
+                return;
+            }
+
+            var settings = System.Text.Json.JsonSerializer.Deserialize<GOCDConnectionModel>(json);
+            if (settings == null || string.IsNullOrEmpty(settings.ServerUrl))
+            {
+                errorMessage = "GoCD server URL not configured. Please check Settings.";
+                return;
+            }
+
+            LoadingService.SetLoading(true, "Connecting to GoCD...");
+            
+            GOCDApiClient client;
+            if (settings.AuthMethod == "token" && !string.IsNullOrEmpty(settings.BearerToken))
+            {
+                client = new GOCDApiClient(settings.ServerUrl, settings.BearerToken);
+            }
+            else if (settings.AuthMethod == "basic" && !string.IsNullOrEmpty(settings.Username) && !string.IsNullOrEmpty(settings.Password))
+            {
+                client = new GOCDApiClient(settings.ServerUrl, settings.Username, settings.Password);
+            }
+            else
+            {
+                errorMessage = "GoCD authentication not properly configured. Please check Settings.";
+                return;
+            }
+
+            LoadingService.SetLoading(true, "Fetching production deployments...");
+            deployments = await client.GetProductionDeploymentsAsync(startDate, endDate.AddDays(1).AddSeconds(-1));
+        }
+        catch (Exception ex)
+        {
+            errorMessage = $"Error generating report: {ex.Message}";
+        }
+        finally
+        {
+            isGenerating = false;
+            LoadingService.SetLoading(false);
+        }
+    }
+
+    private async Task ExportToCsv()
+    {
+        if (deployments?.Any() != true) return;
+
+        var csv = new System.Text.StringBuilder();
+        csv.AppendLine("Group Name,Pipeline Name,Pipeline Label,Production Deploy Date");
+        
+        foreach (var deployment in deployments)
+        {
+            csv.AppendLine($"\"{deployment.GroupName}\",\"{deployment.PipelineName}\",\"{deployment.PipelineLabel}\",\"{deployment.ProdDeployDate:yyyy-MM-dd HH:mm:ss}\"");
+        }
+
+        var fileName = $"gocd-production-deployments-{startDate:yyyyMMdd}-{endDate:yyyyMMdd}.csv";
+        await JSRuntime.InvokeVoidAsync("downloadFile", fileName, csv.ToString(), "text/csv");
+    }
+}

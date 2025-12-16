@@ -27,4 +27,7 @@ public class GroupVariable
 
     [JsonPropertyName("description")]
     public string? Description { get; set; }
+
+    [JsonPropertyName("hidden")]
+    public bool Hidden { get; set; }
 }

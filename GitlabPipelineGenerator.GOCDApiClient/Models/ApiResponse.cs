@@ -32,7 +32,7 @@ public class Link
 public class PipelineHistory
 {
     [JsonPropertyName("pipelines")]
-    public List<Pipeline> Pipelines { get; set; } = new();
+    public List<PipelineRun> Pipelines { get; set; } = new();
 }
 
 public class TemplateList

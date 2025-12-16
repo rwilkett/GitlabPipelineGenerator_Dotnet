@@ -1,3 +1,4 @@
+using System.Text.Json;
 using System.Text.Json.Serialization;
 
 namespace GitlabPipelineGenerator.GOCDApiClient.Models;
@@ -68,5 +69,77 @@ public class Job
     public long Id { get; set; }
 
     [JsonPropertyName("scheduled_date")]
+    [JsonConverter(typeof(UnixTimestampConverter))]
     public DateTime? ScheduledDate { get; set; }
+}
+
+public class UnixTimestampConverter : JsonConverter<DateTime?>
+{
+    public override DateTime? Read(ref Utf8JsonReader reader, Type typeToConvert, JsonSerializerOptions options)
+    {
+        if (reader.TokenType == JsonTokenType.Null)
+            return null;
+
+        if (reader.TokenType == JsonTokenType.Number && reader.TryGetInt64(out long unixTime))
+        {
+            return DateTimeOffset.FromUnixTimeMilliseconds(unixTime).DateTime;
+        }
+
+        return null;
+    }
+
+    public override void Write(Utf8JsonWriter writer, DateTime? value, JsonSerializerOptions options)
+    {
+        if (value.HasValue)
+        {
+            writer.WriteNumberValue(((DateTimeOffset)value.Value).ToUnixTimeMilliseconds());
+        }
+        else
+        {
+            writer.WriteNullValue();
+        }
+    }
+}
+
+public class PipelineRun
+{
+    [JsonPropertyName("name")]
+    public string Name { get; set; } = string.Empty;
+
+    [JsonPropertyName("label")]
+    public string Label { get; set; } = string.Empty;
+
+    [JsonPropertyName("stages")]
+    public List<StageRun> Stages { get; set; } = new();
+}
+
+public class StageRun
+{
+    [JsonPropertyName("name")]
+    public string Name { get; set; } = string.Empty;
+
+    [JsonPropertyName("result")]
+    public string Result { get; set; } = string.Empty;
+
+    [JsonPropertyName("jobs")]
+    public List<JobRun> Jobs { get; set; } = new();
+}
+
+public class JobRun
+{
+    [JsonPropertyName("name")]
+    public string Name { get; set; } = string.Empty;
+
+    [JsonPropertyName("result")]
+    public string Result { get; set; } = string.Empty;
+
+    [JsonPropertyName("state")]
+    public string State { get; set; } = string.Empty;
+
+    [JsonPropertyName("scheduled_date")]
+    [JsonConverter(typeof(UnixTimestampConverter))]
+    public DateTime? ScheduledDate { get; set; }
+
+    /* [JsonPropertyName("completed_date")]
+    public DateTime? CompletedDate { get; set; } */
 }

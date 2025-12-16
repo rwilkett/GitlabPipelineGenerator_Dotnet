@@ -3,6 +3,7 @@
 @using GitlabPipelineGenerator.Core.Interfaces
 @using GitlabPipelineGenerator.Core.Models.GitLab
 @using GitlabPipelineGenerator.Web.Services
+@using GitlabPipelineGenerator.Web.Components.Shared
 @inject IGitLabProjectService GitLabProjectService
 @inject IProjectAnalysisService ProjectAnalysisService
 @inject IIntelligentPipelineGenerator PipelineGenerator
@@ -105,7 +106,10 @@ else if ((projects != null || searchResults != null) && analysisResult == null)
                         ShowVariables="false" 
                         ShowBrowseButton="true" 
                         OnGroupClick="() => ConnectToGroup(group.Id.ToString(), group.Name)" 
-                        OnViewSamlLinks="() => ViewSamlLinks(group.Id.ToString(), group.Name)" />
+                        OnViewSamlLinks="() => ViewSamlLinks(group.Id.ToString(), group.Name)" 
+                        OnViewProvisionedUsers="() => ViewProvisionedUsers(group.Id.ToString(), group.Name)" 
+                        OnViewSamlUsers="() => ViewSamlUsers(group.Id.ToString(), group.Name)" 
+                        OnExportJson="() => ExportGroupJson(group.Id.ToString(), group.Name)" />
                 }
             </div>
         }
@@ -122,7 +126,10 @@ else if ((projects != null || searchResults != null) && analysisResult == null)
                         ShowBrowseButton="false" 
                         OnGroupClick="() => OpenSubgroupTab(subgroup)" 
                         OnViewVariables="() => ShowVariables(subgroup.Variables)" 
-                        OnViewSamlLinks="() => ViewSamlLinks(subgroup.Id.ToString(), subgroup.Name)" />
+                        OnViewSamlLinks="() => ViewSamlLinks(subgroup.Id.ToString(), subgroup.Name)" 
+                        OnViewProvisionedUsers="() => ViewProvisionedUsers(subgroup.Id.ToString(), subgroup.Name)" 
+                        OnViewSamlUsers="() => ViewSamlUsers(subgroup.Id.ToString(), subgroup.Name)" 
+                        OnExportJson="() => ExportGroupJson(subgroup.Id.ToString(), subgroup.Name)" />
                 }
             </div>
         }
@@ -304,6 +311,9 @@ else if (analysisResult != null)
 
 <VariablesModal Show="showVariablesModal" Variables="selectedVariables" OnClose="CloseVariablesModal" />
 <SamlGroupLinksModal Show="showSamlLinksModal" SamlLinks="selectedSamlLinks" OnClose="CloseSamlLinksModal" />
+<ProvisionedUsersModal Show="showProvisionedUsersModal" Members="selectedProvisionedUsers" OnClose="CloseProvisionedUsersModal" />
+<SamlUsersModal Show="showSamlUsersModal" Members="selectedSamlUsers" OnClose="CloseSamlUsersModal" />
+<GroupExportModal @ref="exportModal" Show="showExportModal" GroupName="exportGroupName" OnClose="CloseExportModal" OnExport="HandleGroupExport" />
 
 @code {
     private GitLabConnectionModel connectionModel = new();
@@ -334,6 +344,14 @@ else if (analysisResult != null)
     private ProjectVariablesModel? selectedVariables;
     private bool showSamlLinksModal = false;
     private List<SamlGroupLinkModel>? selectedSamlLinks;
+    private bool showProvisionedUsersModal = false;
+    private List<GitlabPipelineGenerator.GitLabApiClient.Models.Member>? selectedProvisionedUsers;
+    private bool showSamlUsersModal = false;
+    private List<GitlabPipelineGenerator.GitLabApiClient.Models.Member>? selectedSamlUsers;
+    private bool showExportModal = false;
+    private string exportGroupId = string.Empty;
+    private string exportGroupName = string.Empty;
+    private GroupExportModal? exportModal;
     
     public class TabItem
     {
@@ -757,20 +775,40 @@ else if (analysisResult != null)
     {
         try
         {
-            var json = await JSRuntime.InvokeAsync<string>("localStorage.getItem", "gitlab-settings");
+            var json = await JSRuntime.InvokeAsync<string>("localStorage.getItem", "gitlab-instances");
             if (!string.IsNullOrEmpty(json))
             {
-                var saved = System.Text.Json.JsonSerializer.Deserialize<GitLabConnectionModel>(json);
-                if (saved != null)
+                var settings = System.Text.Json.JsonSerializer.Deserialize<GitLabSettingsModel>(json);
+                if (settings?.Instances.Any() == true)
                 {
-                    connectionModel.ServerUrl = saved.ServerUrl;
-                    connectionModel.Token = saved.Token;
-                    connectionModel.DefaultGroupId = saved.DefaultGroupId;
+                    var defaultInstance = settings.Instances.FirstOrDefault(i => i.Id == settings.DefaultInstanceId) ?? settings.Instances.First();
+                    connectionModel.ServerUrl = defaultInstance.ServerUrl;
+                    connectionModel.Token = defaultInstance.Token;
+                    connectionModel.DefaultGroupId = defaultInstance.DefaultGroupId;
                     
-                    // Auto-populate GroupId with DefaultGroupId if not already set
-                    if (string.IsNullOrEmpty(connectionModel.GroupId) && !string.IsNullOrEmpty(saved.DefaultGroupId))
+                    if (string.IsNullOrEmpty(connectionModel.GroupId) && !string.IsNullOrEmpty(defaultInstance.DefaultGroupId))
                     {
-                        connectionModel.GroupId = saved.DefaultGroupId;
+                        connectionModel.GroupId = defaultInstance.DefaultGroupId;
+                    }
+                }
+            }
+            else
+            {
+                // Fallback to old format
+                var oldJson = await JSRuntime.InvokeAsync<string>("localStorage.getItem", "gitlab-settings");
+                if (!string.IsNullOrEmpty(oldJson))
+                {
+                    var saved = System.Text.Json.JsonSerializer.Deserialize<GitLabConnectionModel>(oldJson);
+                    if (saved != null)
+                    {
+                        connectionModel.ServerUrl = saved.ServerUrl;
+                        connectionModel.Token = saved.Token;
+                        connectionModel.DefaultGroupId = saved.DefaultGroupId;
+                        
+                        if (string.IsNullOrEmpty(connectionModel.GroupId) && !string.IsNullOrEmpty(saved.DefaultGroupId))
+                        {
+                            connectionModel.GroupId = saved.DefaultGroupId;
+                        }
                     }
                 }
             }
@@ -823,6 +861,52 @@ else if (analysisResult != null)
     {
         showSamlLinksModal = false;
         selectedSamlLinks = null;
+    }
+    
+    private async Task ViewProvisionedUsers(string groupId, string groupName)
+    {
+        try
+        {
+            var gitlabClient = new GitlabPipelineGenerator.GitLabApiClient.GitLabClient(
+                connectionModel.ServerUrl, 
+                connectionModel.Token);
+            
+            selectedProvisionedUsers = await gitlabClient.GetGroupMembersAsync(groupId);
+            showProvisionedUsersModal = true;
+        }
+        catch (Exception ex)
+        {
+            errorMessage = $"Failed to load provisioned users for {groupName}: {ex.Message}";
+        }
+    }
+    
+    private void CloseProvisionedUsersModal()
+    {
+        showProvisionedUsersModal = false;
+        selectedProvisionedUsers = null;
+    }
+    
+    private async Task ViewSamlUsers(string groupId, string groupName)
+    {
+        try
+        {
+            var gitlabClient = new GitlabPipelineGenerator.GitLabApiClient.GitLabClient(
+                connectionModel.ServerUrl, 
+                connectionModel.Token);
+            
+            selectedSamlUsers = await gitlabClient.GetGroupMembersAsync(groupId);
+            showSamlUsersModal = true;
+        }
+        catch (Exception ex)
+        {
+            errorMessage = $"Failed to load SAML users for {groupName}: {ex.Message}";
+        }
+    }
+    
+    private void CloseSamlUsersModal()
+    {
+        showSamlUsersModal = false;
+        selectedSamlUsers = null;
     }
     
     private string GetAccessLevelName(int accessLevel)
@@ -1003,6 +1087,168 @@ else if (analysisResult != null)
         {
             isLoadingVariables = false;
             loadingVariablesFor = null;
+        }
+    }
+    
+    private void ExportGroupJson(string groupId, string groupName)
+    {
+        exportGroupId = groupId;
+        exportGroupName = groupName;
+        showExportModal = true;
+    }
+    
+    private void CloseExportModal()
+    {
+        showExportModal = false;
+        exportGroupId = string.Empty;
+        exportGroupName = string.Empty;
+    }
+    
+    private async Task HandleGroupExport((string FilePath, string FileName, bool IncludeVariables, bool IncludeSamlLinks, bool IncludeSubgroups, bool IncludeProvisionedUsers) exportInfo)
+    {
+        showExportModal = false;
+        LoadingService.SetLoading(true, $"Exporting {exportGroupName} JSON...");
+        
+        try
+        {
+            var gitlabClient = new GitlabPipelineGenerator.GitLabApiClient.GitLabClient(
+                connectionModel.ServerUrl, 
+                connectionModel.Token);
+            
+            var group = await gitlabClient.GetGroupAsync(exportGroupId);
+            
+            var exportData = new Dictionary<string, object>
+            {
+                ["id"] = group.Id,
+                ["name"] = group.Name,
+                ["path"] = group.Path,
+                ["description"] = group.Description,
+                ["visibility"] = "private",
+                ["full_name"] = group.FullName,
+                ["full_path"] = group.FullPath,
+                ["web_url"] = group.WebUrl,
+                ["parent_id"] = (int?)null
+            };
+            
+            if (exportInfo.IncludeVariables)
+            {
+                try
+                {
+                    LoadingService.SetLoading(true, "Fetching CI/CD variables...");
+                    var variables = await gitlabClient.GetGroupVariablesAsync(exportGroupId);
+                    exportData["variables"] = variables.Select(v => new
+                    {
+                        key = v.Key,
+                        value = v.Value,
+                        variable_type = v.VariableType,
+                        @protected = v.Protected,
+                        masked = v.Masked,
+                        raw = v.Raw,
+                        environment_scope = v.EnvironmentScope,
+                        description = v.Description
+                    }).ToList();
+                }
+                catch
+                {
+                    exportData["variables"] = new List<object>();
+                }
+            }
+            
+            if (exportInfo.IncludeSamlLinks)
+            {
+                try
+                {
+                    LoadingService.SetLoading(true, "Fetching SAML links...");
+                    var samlLinks = await gitlabClient.GetGroupSamlLinksAsync(exportGroupId);
+                    exportData["saml_group_links"] = samlLinks.Select(s => new
+                    {
+                        name = s.SamlGroupName,
+                        access_level = s.AccessLevel,
+                        member_role_id = s.MemberRoleId,
+                        provider = s.Provider
+                    }).ToList();
+                }
+                catch
+                {
+                    exportData["saml_group_links"] = new List<object>();
+                }
+            }
+            
+            if (exportInfo.IncludeSubgroups)
+            {
+                try
+                {
+                    LoadingService.SetLoading(true, "Fetching subgroups...");
+                    var subgroups = await gitlabClient.GetSubgroupsAsync(exportGroupId, 100, 1);
+                    exportData["subgroups"] = subgroups.Select(sg => new
+                    {
+                        id = sg.Id,
+                        name = sg.Name,
+                        path = sg.Path,
+                        description = sg.Description,
+                        full_name = sg.FullName,
+                        full_path = sg.FullPath,
+                        web_url = sg.WebUrl
+                    }).ToList();
+                }
+                catch
+                {
+                    exportData["subgroups"] = new List<object>();
+                }
+            }
+            
+            if (exportInfo.IncludeProvisionedUsers)
+            {
+                try
+                {
+                    LoadingService.SetLoading(true, "Fetching provisioned users...");
+                    var members = await gitlabClient.GetGroupMembersAsync(exportGroupId);
+                    exportData["provisioned_users"] = members.Select(m => new
+                    {
+                        id = m.Id,
+                        username = m.Username,
+                        name = m.Name,
+                        email = m.Email,
+                        access_level = m.AccessLevel,
+                        expires_at = m.ExpiresAt
+                    }).ToList();
+                }
+                catch
+                {
+                    exportData["provisioned_users"] = new List<object>();
+                }
+            }
+            
+            var json = System.Text.Json.JsonSerializer.Serialize(exportData, new System.Text.Json.JsonSerializerOptions { WriteIndented = true });
+            
+            if (exportInfo.FilePath == "fileHandle" && exportModal != null)
+            {
+                // Use File System Access API
+                await exportModal.WriteToSelectedFile(json);
+            }
+            else
+            {
+                // Fallback to download
+                await JSRuntime.InvokeVoidAsync("eval", $@"
+                    const blob = new Blob([{System.Text.Json.JsonSerializer.Serialize(json)}], {{ type: 'application/json' }});
+                    const url = URL.createObjectURL(blob);
+                    const a = document.createElement('a');
+                    a.href = url;
+                    a.download = '{exportInfo.FileName}';
+                    document.body.appendChild(a);
+                    a.click();
+                    document.body.removeChild(a);
+                    URL.revokeObjectURL(url);
+                ");
+            }
+        }
+        catch (Exception ex)
+        {
+            errorMessage = $"Failed to export group JSON for {exportGroupName}: {ex.Message}";
+        }
+        finally
+        {
+            LoadingService.SetLoading(false);
         }
     }
     

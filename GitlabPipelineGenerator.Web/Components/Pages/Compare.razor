@@ -1,0 +1,1271 @@
+@page "/compare"
+@using GitlabPipelineGenerator.Web.Models
+@using GitlabPipelineGenerator.Web.Services
+@inject IJSRuntime JSRuntime
+@inject LoadingService LoadingService
+
+<PageTitle>Compare</PageTitle>
+
+<h1>Compare GitLab Resources</h1>
+
+<div class="row">
+    <div class="col-md-6">
+        <div class="card">
+            <div class="card-header">
+                <h4>Source</h4>
+            </div>
+            <div class="card-body">
+                <div class="form-group mb-3">
+                    <label>GitLab Instance:</label>
+                    <select class="form-control" @bind="sourceInstanceId">
+                        <option value="">Select Instance</option>
+                        @foreach (var instance in gitlabInstances)
+                        {
+                            <option value="@instance.Id">@instance.Name (@instance.ServerUrl)</option>
+                        }
+                    </select>
+                </div>
+                <div class="form-group mb-3">
+                    <label>Group/Project ID:</label>
+                    <input type="text" class="form-control" @bind="sourceResourceId" placeholder="e.g., 12345 or group/project" />
+                </div>
+                <div class="form-group mb-3">
+                    <label>Resource Type:</label>
+                    <select class="form-control" @bind="sourceResourceType">
+                        <option value="group">Group</option>
+                        <option value="project">Project</option>
+                    </select>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <div class="col-md-6">
+        <div class="card">
+            <div class="card-header">
+                <h4>Target @(sourceResourceType == "group" ? "" : "<small class=\"text-muted\">(Optional)</small>")</h4>
+            </div>
+            <div class="card-body">
+                <div class="form-group mb-3">
+                    <label>GitLab Instance:</label>
+                    <select class="form-control" @bind="targetInstanceId">
+                        <option value="">Select Instance</option>
+                        @foreach (var instance in gitlabInstances)
+                        {
+                            <option value="@instance.Id">@instance.Name (@instance.ServerUrl)</option>
+                        }
+                    </select>
+                </div>
+                <div class="form-group mb-3">
+                    <label>Group/Project ID:</label>
+                    <input type="text" class="form-control" @bind="targetResourceId" placeholder="e.g., 12345 or group/project" />
+                </div>
+                <div class="form-group mb-3">
+                    <label>Resource Type:</label>
+                    <select class="form-control" @bind="targetResourceType">
+                        <option value="group">Group</option>
+                        <option value="project">Project</option>
+                    </select>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="text-center mt-3">
+    <button class="btn btn-primary" @onclick="CompareResources" disabled="@isComparing">
+        @if (isComparing)
+        {
+            <span class="spinner-border spinner-border-sm" role="status"></span>
+            <span>Comparing...</span>
+        }
+        else
+        {
+            <span>Compare</span>
+        }
+    </button>
+</div>
+
+@if (comparisonResult != null)
+{
+    <div class="mt-4">
+        <h3>Comparison Results</h3>
+        
+        <div class="row">
+            <div class="col-md-6">
+                <div class="card">
+                    <div class="card-header">
+                        <h5>Source: @comparisonResult.SourceName</h5>
+                    </div>
+                    <div class="card-body">
+                        <p><strong>Variables:</strong> @comparisonResult.SourceVariableCount</p>
+                        <p><strong>URL:</strong> <a href="@comparisonResult.SourceUrl" target="_blank">@comparisonResult.SourceUrl</a></p>
+                    </div>
+                </div>
+            </div>
+            
+            <div class="col-md-6">
+                <div class="card">
+                    <div class="card-header">
+                        <h5>Target: @comparisonResult.TargetName</h5>
+                    </div>
+                    <div class="card-body">
+                        <p><strong>Variables:</strong> @comparisonResult.TargetVariableCount</p>
+                        @if (!string.IsNullOrEmpty(comparisonResult.TargetUrl))
+                        {
+                            <p><strong>URL:</strong> <a href="@comparisonResult.TargetUrl" target="_blank">@comparisonResult.TargetUrl</a></p>
+                        }
+                        else
+                        {
+                            <p><em>No target resource selected</em></p>
+                        }
+                    </div>
+                </div>
+            </div>
+        </div>
+        
+        @if (comparisonResult.VariableDifferences.Any())
+        {
+            <div class="mt-3">
+                <div class="d-flex justify-content-between align-items-center mb-3">
+                    <h4>Variable Differences</h4>
+                    @if ((CanCopyProjectVariables() || CanCopyGroupVariables()) && HasSourceOnlyVariables())
+                    {
+                        <button class="btn btn-primary" @onclick="CopyAllSourceOnlyVariables" disabled="@isCopyingVariables">
+                            @if (isCopyingVariables)
+                            {
+                                <span class="spinner-border spinner-border-sm" role="status"></span>
+                                <span>Copying...</span>
+                            }
+                            else
+                            {
+                                <span>Copy All Missing Variables</span>
+                            }
+                        </button>
+                    }
+                </div>
+                <table class="table table-striped">
+                    <thead>
+                        <tr>
+                            <th>Variable Key</th>
+                            <th>Source</th>
+                            <th>Target</th>
+                            <th>Status</th>
+                            @if (CanCopyGroups() || CanCopyProjectVariables() || CanCopyGroupVariables())
+                            {
+                                <th>Action</th>
+                            }
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @foreach (var diff in comparisonResult.VariableDifferences)
+                        {
+                            <tr class="@(diff.Status == "Source Only" && CanCopyProjectVariables() ? "table-info" : "")">
+                                <td>@diff.Key</td>
+                                <td>@(diff.SourceExists ? "✓" : "✗")</td>
+                                <td>@(diff.TargetExists ? "✓" : "✗")</td>
+                                <td>
+                                    <span class="badge @GetStatusBadgeClass(diff.Status)">@diff.Status</span>
+                                </td>
+                                @if (CanCopyGroups() || CanCopyProjectVariables() || CanCopyGroupVariables())
+                                {
+                                    <td>
+                                        @if (CanCopyGroups() && diff.Key.Contains(":"))
+                                        {
+                                            var groupName = diff.Key.Split(':')[0];
+                                            @if (diff.Status == "Source Only")
+                                            {
+                                                <button class="btn btn-sm btn-outline-primary" @onclick="() => ShowCopyModal(groupName)">
+                                                    Copy Group
+                                                </button>
+                                            }
+                                            else if (diff.Status == "Same" || diff.Status == "Different")
+                                            {
+                                                <button class="btn btn-sm btn-outline-warning" @onclick="() => ShowSyncModal(groupName)">
+                                                    Sync Group
+                                                </button>
+                                            }
+                                        }
+                                        @if (CanCopyProjectVariables() && diff.Status == "Source Only")
+                                        {
+                                            <button class="btn btn-sm btn-outline-success" @onclick="() => CopyProjectVariable(diff.Key)">
+                                                Copy Variable
+                                            </button>
+                                        }
+                                        @if (CanCopyGroupVariables() && diff.Status == "Source Only")
+                                        {
+                                            <button class="btn btn-sm btn-outline-success" @onclick="() => CopyGroupVariable(diff.Key)">
+                                                Copy Variable
+                                            </button>
+                                        }
+                                    </td>
+                                }
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            </div>
+        }
+    </div>
+}
+
+@if (!string.IsNullOrEmpty(errorMessage))
+{
+    <div class="alert alert-danger mt-3">@errorMessage</div>
+}
+
+<!-- Copy Group Modal -->
+@if (showCopyModal)
+{
+    <div class="modal fade show d-block" tabindex="-1" style="background-color: rgba(0,0,0,0.5);">
+        <div class="modal-dialog">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title">Copy Group: @copyGroupName</h5>
+                    <button type="button" class="btn-close" @onclick="CloseCopyModal"></button>
+                </div>
+                <div class="modal-body">
+                    <div class="form-check mb-3">
+                        <input class="form-check-input" type="checkbox" @bind="includeSamlLinks" id="includeSamlLinks">
+                        <label class="form-check-label" for="includeSamlLinks">
+                            Include SAML Group Links
+                        </label>
+                    </div>
+                    <div class="form-check mb-3">
+                        <input class="form-check-input" type="checkbox" @bind="includeVariables" id="includeVariables">
+                        <label class="form-check-label" for="includeVariables">
+                            Include CI/CD Variables
+                        </label>
+                    </div>
+                    <div class="form-check mb-3">
+                        <input class="form-check-input" type="checkbox" @bind="includeSubgroups" id="includeSubgroups">
+                        <label class="form-check-label" for="includeSubgroups">
+                            Include Subgroups
+                        </label>
+                    </div>
+                    <div class="form-check mb-3">
+                        <input class="form-check-input" type="checkbox" @bind="includeProvisionedUsers" id="includeProvisionedUsers">
+                        <label class="form-check-label" for="includeProvisionedUsers">
+                            Include Provisioned Users
+                        </label>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" @onclick="CloseCopyModal">Cancel</button>
+                    <button type="button" class="btn btn-primary" @onclick="CopyGroup" disabled="@isCopying">
+                        @if (isCopying)
+                        {
+                            <span class="spinner-border spinner-border-sm" role="status"></span>
+                            <span>Copying...</span>
+                        }
+                        else
+                        {
+                            <span>Copy Group</span>
+                        }
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+}
+
+<!-- Sync Group Modal -->
+@if (showSyncModal)
+{
+    <div class="modal fade show d-block" tabindex="-1" style="background-color: rgba(0,0,0,0.5);">
+        <div class="modal-dialog">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title">Sync Group: @syncGroupName</h5>
+                    <button type="button" class="btn-close" @onclick="CloseSyncModal"></button>
+                </div>
+                <div class="modal-body">
+                    <div class="form-check mb-3">
+                        <input class="form-check-input" type="checkbox" @bind="syncSamlLinks" id="syncSamlLinks">
+                        <label class="form-check-label" for="syncSamlLinks">
+                            Sync SAML Group Links
+                        </label>
+                    </div>
+                    <div class="form-check mb-3">
+                        <input class="form-check-input" type="checkbox" @bind="syncVariables" id="syncVariables">
+                        <label class="form-check-label" for="syncVariables">
+                            Sync CI/CD Variables
+                        </label>
+                    </div>
+                    <div class="form-check mb-3">
+                        <input class="form-check-input" type="checkbox" @bind="syncSubgroups" id="syncSubgroups">
+                        <label class="form-check-label" for="syncSubgroups">
+                            Sync Subgroups
+                        </label>
+                    </div>
+                    <div class="form-check mb-3">
+                        <input class="form-check-input" type="checkbox" @bind="syncProvisionedUsers" id="syncProvisionedUsers">
+                        <label class="form-check-label" for="syncProvisionedUsers">
+                            Sync Provisioned Users
+                        </label>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" @onclick="CloseSyncModal">Cancel</button>
+                    <button type="button" class="btn btn-warning" @onclick="SyncGroup" disabled="@isSyncing">
+                        @if (isSyncing)
+                        {
+                            <span class="spinner-border spinner-border-sm" role="status"></span>
+                            <span>Syncing...</span>
+                        }
+                        else
+                        {
+                            <span>Sync Group</span>
+                        }
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+}
+
+@code {
+    private List<GitLabInstanceModel> gitlabInstances = new();
+    private string sourceInstanceId = string.Empty;
+    private string targetInstanceId = string.Empty;
+    private string sourceResourceId = string.Empty;
+    private string targetResourceId = string.Empty;
+    private string sourceResourceType = "group";
+    private string targetResourceType = "group";
+    private bool isComparing = false;
+    private string? errorMessage;
+    private ComparisonResultModel? comparisonResult;
+    private bool showCopyModal = false;
+    private string copyGroupName = string.Empty;
+    private bool includeSamlLinks = false;
+    private bool includeVariables = false;
+    private bool includeSubgroups = false;
+    private bool includeProvisionedUsers = false;
+    private bool isCopying = false;
+    private bool showSyncModal = false;
+    private string syncGroupName = string.Empty;
+    private bool syncSamlLinks = false;
+    private bool syncVariables = false;
+    private bool syncSubgroups = false;
+    private bool syncProvisionedUsers = false;
+    private bool isSyncing = false;
+    private bool isCopyingVariables = false;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadGitLabInstances();
+    }
+
+    private async Task LoadGitLabInstances()
+    {
+        try
+        {
+            var json = await JSRuntime.InvokeAsync<string>("localStorage.getItem", "gitlab-instances");
+            if (!string.IsNullOrEmpty(json))
+            {
+                var settings = System.Text.Json.JsonSerializer.Deserialize<GitLabSettingsModel>(json);
+                if (settings?.Instances.Any() == true)
+                {
+                    gitlabInstances = settings.Instances;
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            errorMessage = $"Error loading GitLab instances: {ex.Message}";
+        }
+    }
+
+    private async Task CompareResources()
+    {
+        if (string.IsNullOrEmpty(sourceInstanceId) || string.IsNullOrEmpty(sourceResourceId))
+        {
+            errorMessage = "Please fill in source instance and resource ID.";
+            return;
+        }
+
+        if (sourceResourceType == "group" && (string.IsNullOrEmpty(targetInstanceId) || string.IsNullOrEmpty(targetResourceId)))
+        {
+            errorMessage = "Target instance and group ID are required for group comparisons.";
+            return;
+        }
+
+        isComparing = true;
+        errorMessage = null;
+        LoadingService.SetLoading(true, "Comparing resources...");
+
+        try
+        {
+            var sourceInstance = gitlabInstances.FirstOrDefault(i => i.Id == sourceInstanceId);
+            if (sourceInstance == null)
+            {
+                errorMessage = "Invalid source GitLab instance selected.";
+                return;
+            }
+
+            var sourceClient = new GitlabPipelineGenerator.GitLabApiClient.GitLabClient(sourceInstance.ServerUrl, sourceInstance.Token);
+            
+            LoadingService.SetLoading(true, "Loading source resource...");
+            var sourceData = await LoadResourceData(sourceClient, sourceResourceId, sourceResourceType);
+            
+            // For group comparisons, load subgroup data
+            if (sourceResourceType == "group")
+            {
+                sourceData = await LoadSourceSubgroupData(sourceClient, sourceResourceId);
+            }
+            
+            ResourceDataModel? targetData = null;
+            if (!string.IsNullOrEmpty(targetInstanceId))
+            {
+                var targetInstance = gitlabInstances.FirstOrDefault(i => i.Id == targetInstanceId);
+                if (targetInstance != null)
+                {
+                    var targetClient = new GitlabPipelineGenerator.GitLabApiClient.GitLabClient(targetInstance.ServerUrl, targetInstance.Token);
+                    
+                    if (!string.IsNullOrEmpty(targetResourceId))
+                    {
+                        if (targetResourceType == "group")
+                        {
+                            LoadingService.SetLoading(true, "Loading target subgroups...");
+                            targetData = await LoadTargetSubgroupData(targetClient, targetResourceId);
+                        }
+                        else
+                        {
+                            LoadingService.SetLoading(true, "Loading target resource...");
+                            targetData = await LoadResourceData(targetClient, targetResourceId, targetResourceType);
+                        }
+                    }
+                }
+            }
+
+            LoadingService.SetLoading(true, "Analyzing differences...");
+            comparisonResult = new ComparisonResultModel
+            {
+                SourceName = sourceData.Name,
+                TargetName = targetData?.Name ?? "(None)",
+                SourceUrl = sourceData.WebUrl,
+                TargetUrl = targetData?.WebUrl ?? "",
+                SourceVariableCount = sourceData.Variables.Count,
+                TargetVariableCount = targetData?.Variables.Count ?? 0,
+                VariableDifferences = CompareVariables(sourceData.Variables, targetData?.Variables ?? new Dictionary<string, string>())
+            };
+        }
+        catch (Exception ex)
+        {
+            errorMessage = $"Error comparing resources: {ex.Message}";
+        }
+        finally
+        {
+            isComparing = false;
+            LoadingService.SetLoading(false);
+        }
+    }
+
+    private async Task<ResourceDataModel> LoadResourceData(GitlabPipelineGenerator.GitLabApiClient.GitLabClient client, string resourceId, string resourceType)
+    {
+        if (resourceType == "group")
+        {
+            var group = await client.GetGroupAsync(resourceId);
+            var variables = await client.GetGroupVariablesAsync(resourceId);
+            return new ResourceDataModel
+            {
+                Name = group.Name,
+                WebUrl = group.WebUrl,
+                Variables = variables.ToDictionary(v => v.Key, v => v.Value ?? "")
+            };
+        }
+        else
+        {
+            var project = await client.GetProjectAsync(resourceId);
+            var variables = await client.GetProjectVariablesAsync(resourceId);
+            return new ResourceDataModel
+            {
+                Name = project.Name,
+                WebUrl = project.WebUrl,
+                Variables = variables.ToDictionary(v => v.Key, v => v.Value ?? "")
+            };
+        }
+    }
+
+    private async Task<ResourceDataModel> LoadSourceSubgroupData(GitlabPipelineGenerator.GitLabApiClient.GitLabClient sourceClient, string sourceGroupId)
+    {
+        var sourceGroup = await sourceClient.GetGroupAsync(sourceGroupId);
+        var sourceSubgroups = await sourceClient.GetSubgroupsAsync(sourceGroupId, 100, 1);
+        
+        var combinedVariables = new Dictionary<string, string>();
+        
+        foreach (var subgroup in sourceSubgroups)
+        {
+            try
+            {
+                var variables = await sourceClient.GetGroupVariablesAsync(subgroup.Id.ToString());
+                foreach (var variable in variables)
+                {
+                    combinedVariables[$"{subgroup.Name}:{variable.Key}"] = variable.Value ?? "";
+                }
+            }
+            catch { /* Ignore variable fetch errors */ }
+            
+            // Always include subgroup even if it has no variables
+            if (!combinedVariables.Keys.Any(k => k.StartsWith($"{subgroup.Name}:")))
+            {
+                combinedVariables[$"{subgroup.Name}:(no variables)"] = "";
+            }
+        }
+        
+        return new ResourceDataModel
+        {
+            Name = $"{sourceGroup.Name} Subgroups",
+            WebUrl = sourceGroup.WebUrl,
+            Variables = combinedVariables
+        };
+    }
+
+    private async Task<ResourceDataModel> LoadTargetSubgroupData(GitlabPipelineGenerator.GitLabApiClient.GitLabClient targetClient, string targetGroupId)
+    {
+        var targetGroup = await targetClient.GetGroupAsync(targetGroupId);
+        var targetSubgroups = await targetClient.GetSubgroupsAsync(targetGroupId, 100, 1);
+        
+        var combinedVariables = new Dictionary<string, string>();
+        
+        foreach (var subgroup in targetSubgroups)
+        {
+            try
+            {
+                var variables = await targetClient.GetGroupVariablesAsync(subgroup.Id.ToString());
+                foreach (var variable in variables)
+                {
+                    combinedVariables[$"{subgroup.Name}:{variable.Key}"] = variable.Value ?? "";
+                }
+            }
+            catch { /* Ignore variable fetch errors */ }
+            
+            // Always include subgroup even if it has no variables
+            if (!combinedVariables.Keys.Any(k => k.StartsWith($"{subgroup.Name}:")))
+            {
+                combinedVariables[$"{subgroup.Name}:(no variables)"] = "";
+            }
+        }
+        
+        return new ResourceDataModel
+        {
+            Name = $"{targetGroup.Name} Subgroups",
+            WebUrl = targetGroup.WebUrl,
+            Variables = combinedVariables
+        };
+    }
+
+    private List<VariableDifferenceModel> CompareVariables(Dictionary<string, string> sourceVars, Dictionary<string, string> targetVars)
+    {
+        var differences = new List<VariableDifferenceModel>();
+        
+        // Check if we're comparing group:variable format
+        var isGroupComparison = sourceVars.Keys.Any(k => k.Contains(":")) || targetVars.Keys.Any(k => k.Contains(":"));
+        
+        if (isGroupComparison)
+        {
+            // Group all variables by group name
+            var sourceGroups = sourceVars.Keys.Where(k => k.Contains(":")).Select(k => k.Split(':')[0]).Distinct();
+            var targetGroups = targetVars.Keys.Where(k => k.Contains(":")).Select(k => k.Split(':')[0]).Distinct();
+            var allGroups = sourceGroups.Union(targetGroups).Distinct();
+            
+            foreach (var groupName in allGroups)
+            {
+                var sourceGroupVars = sourceVars.Where(kv => kv.Key.StartsWith($"{groupName}:")).ToDictionary(kv => kv.Key, kv => kv.Value);
+                var targetGroupVars = targetVars.Where(kv => kv.Key.StartsWith($"{groupName}:")).ToDictionary(kv => kv.Key, kv => kv.Value);
+                
+                var sourceExists = sourceGroupVars.Any();
+                var targetExists = targetGroupVars.Any();
+                
+                string status;
+                if (sourceExists && targetExists)
+                {
+                    // Compare all variables in the group
+                    var allVarsMatch = sourceGroupVars.All(sv => targetGroupVars.ContainsKey(sv.Key) && targetGroupVars[sv.Key] == sv.Value) &&
+                                      targetGroupVars.All(tv => sourceGroupVars.ContainsKey(tv.Key));
+                    status = allVarsMatch ? "Same" : "Different";
+                }
+                else if (sourceExists)
+                {
+                    status = "Source Only";
+                }
+                else
+                {
+                    status = "Target Only";
+                }
+                
+                // Add one entry per group with a representative variable key
+                var representativeKey = sourceExists ? sourceGroupVars.Keys.First() : targetGroupVars.Keys.First();
+                differences.Add(new VariableDifferenceModel
+                {
+                    Key = representativeKey,
+                    SourceExists = sourceExists,
+                    TargetExists = targetExists,
+                    Status = status
+                });
+            }
+        }
+        else
+        {
+            // Original variable comparison logic
+            var allKeys = sourceVars.Keys.Union(targetVars.Keys).Distinct();
+            
+            foreach (var key in allKeys)
+            {
+                var sourceExists = sourceVars.ContainsKey(key);
+                var targetExists = targetVars.ContainsKey(key);
+                
+                string status;
+                if (sourceExists && targetExists)
+                {
+                    status = sourceVars[key] == targetVars[key] ? "Same" : "Different";
+                }
+                else if (sourceExists)
+                {
+                    status = "Source Only";
+                }
+                else
+                {
+                    status = "Target Only";
+                }
+
+                differences.Add(new VariableDifferenceModel
+                {
+                    Key = key,
+                    SourceExists = sourceExists,
+                    TargetExists = targetExists,
+                    Status = status
+                });
+            }
+        }
+
+        return differences.OrderBy(d => d.Key).ToList();
+    }
+
+    private string GetStatusBadgeClass(string status)
+    {
+        return status switch
+        {
+            "Same" => "bg-success",
+            "Different" => "bg-warning",
+            "Source Only" => "bg-info",
+            "Target Only" => "bg-secondary",
+            _ => "bg-light"
+        };
+    }
+
+    private bool CanCopyGroups()
+    {
+        return !string.IsNullOrEmpty(targetInstanceId) && string.IsNullOrEmpty(targetResourceId) && sourceResourceType == "group";
+    }
+
+    private bool CanCopyProjectVariables()
+    {
+        return !string.IsNullOrEmpty(targetInstanceId) && !string.IsNullOrEmpty(targetResourceId) && 
+               sourceResourceType == "project" && targetResourceType == "project";
+    }
+
+    private bool CanCopyGroupVariables()
+    {
+        return !string.IsNullOrEmpty(targetInstanceId) && !string.IsNullOrEmpty(targetResourceId) && 
+               sourceResourceType == "group" && targetResourceType == "group";
+    }
+
+    private bool HasSourceOnlyVariables()
+    {
+        return comparisonResult?.VariableDifferences.Any(d => d.Status == "Source Only") == true;
+    }
+
+    private void ShowCopyModal(string groupName)
+    {
+        copyGroupName = groupName;
+        includeSamlLinks = false;
+        includeVariables = false;
+        includeSubgroups = false;
+        includeProvisionedUsers = false;
+        showCopyModal = true;
+    }
+
+    private void CloseCopyModal()
+    {
+        showCopyModal = false;
+        copyGroupName = string.Empty;
+    }
+
+    private void ShowSyncModal(string groupName)
+    {
+        syncGroupName = groupName;
+        syncSamlLinks = false;
+        syncVariables = false;
+        syncSubgroups = false;
+        syncProvisionedUsers = false;
+        showSyncModal = true;
+    }
+
+    private void CloseSyncModal()
+    {
+        showSyncModal = false;
+        syncGroupName = string.Empty;
+    }
+
+    private async Task CopyGroup()
+    {
+        isCopying = true;
+        LoadingService.SetLoading(true, $"Copying group {copyGroupName}...");
+
+        try
+        {
+            var sourceInstance = gitlabInstances.FirstOrDefault(i => i.Id == sourceInstanceId);
+            var targetInstance = gitlabInstances.FirstOrDefault(i => i.Id == targetInstanceId);
+
+            if (sourceInstance == null || targetInstance == null)
+            {
+                errorMessage = "Invalid instances selected.";
+                return;
+            }
+
+            var sourceClient = new GitlabPipelineGenerator.GitLabApiClient.GitLabClient(sourceInstance.ServerUrl, sourceInstance.Token);
+            var targetClient = new GitlabPipelineGenerator.GitLabApiClient.GitLabClient(targetInstance.ServerUrl, targetInstance.Token);
+
+            // Get source subgroups to find the one to copy
+            var sourceSubgroups = await sourceClient.GetSubgroupsAsync(sourceResourceId, 100, 1);
+            var sourceGroup = sourceSubgroups.FirstOrDefault(g => g.Name == copyGroupName);
+
+            if (sourceGroup == null)
+            {
+                errorMessage = $"Source group {copyGroupName} not found.";
+                return;
+            }
+
+            // Create group on target
+            await targetClient.CreateGroupAsync(sourceGroup.Name, sourceGroup.Path, sourceGroup.Description ?? "");
+
+            // Get the created group to get its ID
+            var createdGroups = await targetClient.GetTopLevelGroupsAsync();
+            var createdGroup = createdGroups.FirstOrDefault(g => g.Name == sourceGroup.Name);
+
+            if (createdGroup != null)
+            {
+                if (includeVariables)
+                {
+                    LoadingService.SetLoading(true, "Copying CI/CD variables...");
+                    var variables = await sourceClient.GetGroupVariablesAsync(sourceGroup.Id.ToString());
+                    foreach (var variable in variables)
+                    {
+                        await targetClient.CreateGroupVariableAsync(createdGroup.Id.ToString(), variable.Key, variable.Value ?? "", variable.VariableType, variable.Protected, variable.Masked, variable.EnvironmentScope);
+                    }
+                }
+
+                if (includeSamlLinks)
+                {
+                    LoadingService.SetLoading(true, "Copying SAML links...");
+                    var samlLinks = await sourceClient.GetGroupSamlLinksAsync(sourceGroup.Id.ToString());
+                    foreach (var link in samlLinks)
+                    {
+                        await targetClient.CreateGroupSamlLinkAsync(createdGroup.Id.ToString(), link.SamlGroupName, link.AccessLevel);
+                    }
+                }
+
+                if (includeSubgroups)
+                {
+                    LoadingService.SetLoading(true, "Copying subgroups...");
+                    await CopySubgroups(sourceClient, targetClient, sourceGroup.Id.ToString(), createdGroup.Id.ToString());
+                }
+
+                if (includeProvisionedUsers)
+                {
+                    LoadingService.SetLoading(true, "Copying provisioned users...");
+                    var members = await sourceClient.GetGroupMembersAsync(sourceGroup.Id.ToString());
+                    foreach (var member in members)
+                    {
+                        try
+                        {
+                            var targetUsers = await targetClient.SearchUsersAsync(member.Username);
+                            var targetUser = targetUsers.FirstOrDefault(u => u.Username.Equals(member.Username, StringComparison.OrdinalIgnoreCase));
+                            if (targetUser != null)
+                            {
+                                await targetClient.AddGroupMemberAsync(createdGroup.Id.ToString(), targetUser.Id, member.AccessLevel);
+                            }
+                        }
+                        catch
+                        {
+                            // Skip users that don't exist on target instance
+                        }
+                    }
+                }
+            }
+
+            showCopyModal = false;
+            await CompareResources(); // Refresh comparison
+        }
+        catch (Exception ex)
+        {
+            errorMessage = $"Error copying group: {ex.Message}";
+        }
+        finally
+        {
+            isCopying = false;
+            LoadingService.SetLoading(false);
+        }
+    }
+
+    private async Task CopySubgroups(GitlabPipelineGenerator.GitLabApiClient.GitLabClient sourceClient, GitlabPipelineGenerator.GitLabApiClient.GitLabClient targetClient, string sourceParentId, string targetParentId)
+    {
+        // Get all subgroups with pagination
+        var allSubgroups = new List<GitlabPipelineGenerator.GitLabApiClient.Models.Group>();
+        int page = 1;
+        List<GitlabPipelineGenerator.GitLabApiClient.Models.Group> pageSubgroups;
+        do
+        {
+            pageSubgroups = await sourceClient.GetSubgroupsAsync(sourceParentId, 100, page);
+            allSubgroups.AddRange(pageSubgroups);
+            page++;
+        } while (pageSubgroups.Count == 100);
+        
+        foreach (var subgroup in allSubgroups)
+        {
+            var createdSubgroup = await targetClient.CreateSubgroupAsync(targetParentId, subgroup.Name, subgroup.Path, subgroup.Description ?? "");
+            
+            if (includeVariables)
+            {
+                var variables = await sourceClient.GetGroupVariablesAsync(subgroup.Id.ToString());
+                foreach (var variable in variables)
+                {
+                    await targetClient.CreateGroupVariableAsync(createdSubgroup.Id.ToString(), variable.Key, variable.Value ?? "", variable.VariableType, variable.Protected, variable.Masked, variable.EnvironmentScope);
+                }
+            }
+            
+            if (includeSamlLinks)
+            {
+                var samlLinks = await sourceClient.GetGroupSamlLinksAsync(subgroup.Id.ToString());
+                foreach (var link in samlLinks)
+                {
+                    await targetClient.CreateGroupSamlLinkAsync(createdSubgroup.Id.ToString(), link.SamlGroupName, link.AccessLevel);
+                }
+            }
+            
+            if (includeProvisionedUsers)
+            {
+                var members = await sourceClient.GetGroupMembersAsync(subgroup.Id.ToString());
+                foreach (var member in members)
+                {
+                    try
+                    {
+                        var targetUsers = await targetClient.SearchUsersAsync(member.Username);
+                        var targetUser = targetUsers.FirstOrDefault(u => u.Username.Equals(member.Username, StringComparison.OrdinalIgnoreCase));
+                        if (targetUser != null)
+                        {
+                            await targetClient.AddGroupMemberAsync(createdSubgroup.Id.ToString(), targetUser.Id, member.AccessLevel);
+                        }
+                    }
+                    catch
+                    {
+                        // Skip users that don't exist on target instance
+                    }
+                }
+            }
+            
+            // Recursively copy nested subgroups
+            await CopySubgroups(sourceClient, targetClient, subgroup.Id.ToString(), createdSubgroup.Id.ToString());
+        }
+    }
+
+    private async Task SyncGroup()
+    {
+        isSyncing = true;
+        LoadingService.SetLoading(true, $"Syncing group {syncGroupName}...");
+
+        try
+        {
+            var sourceInstance = gitlabInstances.FirstOrDefault(i => i.Id == sourceInstanceId);
+            var targetInstance = gitlabInstances.FirstOrDefault(i => i.Id == targetInstanceId);
+
+            if (sourceInstance == null || targetInstance == null)
+            {
+                errorMessage = "Invalid instances selected.";
+                return;
+            }
+
+            var sourceClient = new GitlabPipelineGenerator.GitLabApiClient.GitLabClient(sourceInstance.ServerUrl, sourceInstance.Token);
+            var targetClient = new GitlabPipelineGenerator.GitLabApiClient.GitLabClient(targetInstance.ServerUrl, targetInstance.Token);
+
+            // Find source and target groups by name
+            var sourceSubgroups = await sourceClient.GetSubgroupsAsync(sourceResourceId, 100, 1);
+            var sourceGroup = sourceSubgroups.FirstOrDefault(g => g.Name == syncGroupName);
+            
+            var targetTopLevelGroups = await targetClient.GetTopLevelGroupsAsync();
+            var targetGroup = targetTopLevelGroups.FirstOrDefault(g => g.Name == syncGroupName);
+
+            if (sourceGroup == null || targetGroup == null)
+            {
+                errorMessage = $"Group {syncGroupName} not found on source or target.";
+                return;
+            }
+
+            if (syncVariables)
+            {
+                LoadingService.SetLoading(true, "Syncing CI/CD variables...");
+                await targetClient.DeleteAllGroupVariablesAsync(targetGroup.Id.ToString());
+                var variables = await sourceClient.GetGroupVariablesAsync(sourceGroup.Id.ToString());
+                foreach (var variable in variables)
+                {
+                    await targetClient.CreateGroupVariableAsync(targetGroup.Id.ToString(), variable.Key, variable.Value ?? "", variable.VariableType, variable.Protected, variable.Masked, variable.EnvironmentScope);
+                }
+            }
+
+            if (syncSamlLinks)
+            {
+                LoadingService.SetLoading(true, "Syncing SAML links...");
+                await targetClient.DeleteAllGroupSamlLinksAsync(targetGroup.Id.ToString());
+                var samlLinks = await sourceClient.GetGroupSamlLinksAsync(sourceGroup.Id.ToString());
+                foreach (var link in samlLinks)
+                {
+                    await targetClient.CreateGroupSamlLinkAsync(targetGroup.Id.ToString(), link.SamlGroupName, link.AccessLevel);
+                }
+            }
+
+            if (syncSubgroups)
+            {
+                LoadingService.SetLoading(true, "Syncing subgroups...");
+                await SyncSubgroups(sourceClient, targetClient, sourceGroup.Id.ToString(), targetGroup.Id.ToString());
+            }
+
+            if (syncProvisionedUsers)
+            {
+                LoadingService.SetLoading(true, "Syncing provisioned users...");
+                var sourceMembers = await sourceClient.GetGroupMembersAsync(sourceGroup.Id.ToString());
+                var targetMembers = await targetClient.GetGroupMembersAsync(targetGroup.Id.ToString());
+                
+                foreach (var sourceMember in sourceMembers)
+                {
+                    if (!targetMembers.Any(tm => tm.Username.Equals(sourceMember.Username, StringComparison.OrdinalIgnoreCase)))
+                    {
+                        try
+                        {
+                            var targetUsers = await targetClient.SearchUsersAsync(sourceMember.Username);
+                            var targetUser = targetUsers.FirstOrDefault(u => u.Username.Equals(sourceMember.Username, StringComparison.OrdinalIgnoreCase));
+                            if (targetUser != null)
+                            {
+                                await targetClient.AddGroupMemberAsync(targetGroup.Id.ToString(), targetUser.Id, sourceMember.AccessLevel);
+                            }
+                        }
+                        catch
+                        {
+                            // Skip users that don't exist on target instance
+                        }
+                    }
+                }
+            }
+
+            showSyncModal = false;
+            await CompareResources(); // Refresh comparison
+        }
+        catch (Exception ex)
+        {
+            errorMessage = $"Error syncing group: {ex.Message}";
+        }
+        finally
+        {
+            isSyncing = false;
+            LoadingService.SetLoading(false);
+        }
+    }
+
+    private async Task SyncSubgroups(GitlabPipelineGenerator.GitLabApiClient.GitLabClient sourceClient, GitlabPipelineGenerator.GitLabApiClient.GitLabClient targetClient, string sourceParentId, string targetParentId)
+    {
+        // Get all source subgroups with pagination
+        var allSourceSubgroups = new List<GitlabPipelineGenerator.GitLabApiClient.Models.Group>();
+        int sourcePage = 1;
+        List<GitlabPipelineGenerator.GitLabApiClient.Models.Group> pageSourceSubgroups;
+        do
+        {
+            pageSourceSubgroups = await sourceClient.GetSubgroupsAsync(sourceParentId, 100, sourcePage);
+            allSourceSubgroups.AddRange(pageSourceSubgroups);
+            sourcePage++;
+        } while (pageSourceSubgroups.Count == 100);
+        
+        // Get all target subgroups with pagination
+        var allTargetSubgroups = new List<GitlabPipelineGenerator.GitLabApiClient.Models.Group>();
+        int targetPage = 1;
+        List<GitlabPipelineGenerator.GitLabApiClient.Models.Group> pageTargetSubgroups;
+        do
+        {
+            pageTargetSubgroups = await targetClient.GetSubgroupsAsync(targetParentId, 100, targetPage);
+            allTargetSubgroups.AddRange(pageTargetSubgroups);
+            targetPage++;
+        } while (pageTargetSubgroups.Count == 100);
+        
+        foreach (var sourceSubgroup in allSourceSubgroups)
+        {
+            var targetSubgroup = allTargetSubgroups.FirstOrDefault(t => t.Name.Equals(sourceSubgroup.Name, StringComparison.OrdinalIgnoreCase));
+            
+            if (targetSubgroup == null)
+            {
+                // Create new subgroup
+                targetSubgroup = await targetClient.CreateSubgroupAsync(targetParentId, sourceSubgroup.Name, sourceSubgroup.Path, sourceSubgroup.Description ?? "");
+            }
+            
+            if (syncVariables)
+            {
+                await targetClient.DeleteAllGroupVariablesAsync(targetSubgroup.Id.ToString());
+                var variables = await sourceClient.GetGroupVariablesAsync(sourceSubgroup.Id.ToString());
+                foreach (var variable in variables)
+                {
+                    await targetClient.CreateGroupVariableAsync(targetSubgroup.Id.ToString(), variable.Key, variable.Value ?? "", variable.VariableType, variable.Protected, variable.Masked, variable.EnvironmentScope);
+                }
+            }
+            
+            if (syncSamlLinks)
+            {
+                await targetClient.DeleteAllGroupSamlLinksAsync(targetSubgroup.Id.ToString());
+                var samlLinks = await sourceClient.GetGroupSamlLinksAsync(sourceSubgroup.Id.ToString());
+                foreach (var link in samlLinks)
+                {
+                    await targetClient.CreateGroupSamlLinkAsync(targetSubgroup.Id.ToString(), link.SamlGroupName, link.AccessLevel);
+                }
+            }
+            
+            if (syncProvisionedUsers)
+            {
+                var sourceMembers = await sourceClient.GetGroupMembersAsync(sourceSubgroup.Id.ToString());
+                var targetMembers = await targetClient.GetGroupMembersAsync(targetSubgroup.Id.ToString());
+                
+                foreach (var sourceMember in sourceMembers)
+                {
+                    if (!targetMembers.Any(tm => tm.Username.Equals(sourceMember.Username, StringComparison.OrdinalIgnoreCase)))
+                    {
+                        try
+                        {
+                            var targetUsers = await targetClient.SearchUsersAsync(sourceMember.Username);
+                            var targetUser = targetUsers.FirstOrDefault(u => u.Username.Equals(sourceMember.Username, StringComparison.OrdinalIgnoreCase));
+                            if (targetUser != null)
+                            {
+                                await targetClient.AddGroupMemberAsync(targetSubgroup.Id.ToString(), targetUser.Id, sourceMember.AccessLevel);
+                            }
+                        }
+                        catch
+                        {
+                            // Skip users that don't exist on target instance
+                        }
+                    }
+                }
+            }
+            
+            // Recursively sync nested subgroups
+            await SyncSubgroups(sourceClient, targetClient, sourceSubgroup.Id.ToString(), targetSubgroup.Id.ToString());
+        }
+    }
+
+    private async Task CopyProjectVariable(string variableKey)
+    {
+        if (string.IsNullOrEmpty(sourceInstanceId) || string.IsNullOrEmpty(targetInstanceId) || 
+            string.IsNullOrEmpty(sourceResourceId) || string.IsNullOrEmpty(targetResourceId))
+        {
+            errorMessage = "Source and target projects must be selected.";
+            return;
+        }
+
+        try
+        {
+            var sourceInstance = gitlabInstances.FirstOrDefault(i => i.Id == sourceInstanceId);
+            var targetInstance = gitlabInstances.FirstOrDefault(i => i.Id == targetInstanceId);
+
+            if (sourceInstance == null || targetInstance == null)
+            {
+                errorMessage = "Invalid instances selected.";
+                return;
+            }
+
+            var sourceClient = new GitlabPipelineGenerator.GitLabApiClient.GitLabClient(sourceInstance.ServerUrl, sourceInstance.Token);
+            var targetClient = new GitlabPipelineGenerator.GitLabApiClient.GitLabClient(targetInstance.ServerUrl, targetInstance.Token);
+
+            var sourceVariables = await sourceClient.GetProjectVariablesAsync(sourceResourceId);
+            var sourceVariable = sourceVariables.FirstOrDefault(v => v.Key == variableKey);
+
+            if (sourceVariable != null)
+            {
+                await targetClient.CreateProjectVariableAsync(
+                    targetResourceId, 
+                    sourceVariable.Key, 
+                    sourceVariable.Value ?? "", 
+                    sourceVariable.VariableType ?? "env_var", 
+                    sourceVariable.Protected, 
+                    sourceVariable.Masked, 
+                    sourceVariable.EnvironmentScope ?? "*",
+                    sourceVariable.Description,
+                    sourceVariable.Raw,
+                    sourceVariable.Hidden
+                );
+
+                await CompareResources(); // Refresh comparison
+            }
+        }
+        catch (Exception ex)
+        {
+            errorMessage = $"Error copying variable: {ex.Message}";
+        }
+    }
+
+    private async Task CopyGroupVariable(string variableKey)
+    {
+        if (string.IsNullOrEmpty(sourceInstanceId) || string.IsNullOrEmpty(targetInstanceId) || 
+            string.IsNullOrEmpty(sourceResourceId) || string.IsNullOrEmpty(targetResourceId))
+        {
+            errorMessage = "Source and target groups must be selected.";
+            return;
+        }
+
+        try
+        {
+            var sourceInstance = gitlabInstances.FirstOrDefault(i => i.Id == sourceInstanceId);
+            var targetInstance = gitlabInstances.FirstOrDefault(i => i.Id == targetInstanceId);
+
+            if (sourceInstance == null || targetInstance == null)
+            {
+                errorMessage = "Invalid instances selected.";
+                return;
+            }
+
+            var sourceClient = new GitlabPipelineGenerator.GitLabApiClient.GitLabClient(sourceInstance.ServerUrl, sourceInstance.Token);
+            var targetClient = new GitlabPipelineGenerator.GitLabApiClient.GitLabClient(targetInstance.ServerUrl, targetInstance.Token);
+
+            var sourceVariables = await sourceClient.GetGroupVariablesAsync(sourceResourceId);
+            var sourceVariable = sourceVariables.FirstOrDefault(v => v.Key == variableKey);
+
+            if (sourceVariable != null)
+            {
+                await targetClient.CreateGroupVariableAsync(
+                    targetResourceId, 
+                    sourceVariable.Key, 
+                    sourceVariable.Value ?? "", 
+                    sourceVariable.VariableType ?? "env_var", 
+                    sourceVariable.Protected, 
+                    sourceVariable.Masked, 
+                    sourceVariable.EnvironmentScope ?? "*",
+                    sourceVariable.Description,
+                    sourceVariable.Raw,
+                    sourceVariable.Hidden
+                );
+
+                await CompareResources(); // Refresh comparison
+            }
+        }
+        catch (Exception ex)
+        {
+            errorMessage = $"Error copying group variable: {ex.Message}";
+        }
+    }
+
+    private async Task CopyAllSourceOnlyVariables()
+    {
+        if (comparisonResult == null || !HasSourceOnlyVariables())
+            return;
+
+        isCopyingVariables = true;
+        LoadingService.SetLoading(true, "Copying missing variables...");
+
+        try
+        {
+            var sourceInstance = gitlabInstances.FirstOrDefault(i => i.Id == sourceInstanceId);
+            var targetInstance = gitlabInstances.FirstOrDefault(i => i.Id == targetInstanceId);
+
+            if (sourceInstance == null || targetInstance == null)
+            {
+                errorMessage = "Invalid instances selected.";
+                return;
+            }
+
+            var sourceClient = new GitlabPipelineGenerator.GitLabApiClient.GitLabClient(sourceInstance.ServerUrl, sourceInstance.Token);
+            var targetClient = new GitlabPipelineGenerator.GitLabApiClient.GitLabClient(targetInstance.ServerUrl, targetInstance.Token);
+
+            var sourceOnlyVariables = comparisonResult.VariableDifferences
+                .Where(d => d.Status == "Source Only")
+                .Select(d => d.Key)
+                .ToList();
+
+            if (CanCopyProjectVariables())
+            {
+                var sourceVariables = await sourceClient.GetProjectVariablesAsync(sourceResourceId);
+                foreach (var variableKey in sourceOnlyVariables)
+                {
+                    var sourceVariable = sourceVariables.FirstOrDefault(v => v.Key == variableKey);
+                    if (sourceVariable != null)
+                    {
+                        await targetClient.CreateProjectVariableAsync(
+                            targetResourceId, 
+                            sourceVariable.Key, 
+                            sourceVariable.Value ?? "", 
+                            sourceVariable.VariableType ?? "env_var", 
+                            sourceVariable.Protected, 
+                            sourceVariable.Masked, 
+                            sourceVariable.EnvironmentScope ?? "*",
+                            sourceVariable.Description,
+                            sourceVariable.Raw,
+                            sourceVariable.Hidden
+                        );
+                    }
+                }
+            }
+            else if (CanCopyGroupVariables())
+            {
+                var sourceVariables = await sourceClient.GetGroupVariablesAsync(sourceResourceId);
+                foreach (var variableKey in sourceOnlyVariables)
+                {
+                    var sourceVariable = sourceVariables.FirstOrDefault(v => v.Key == variableKey);
+                    if (sourceVariable != null)
+                    {
+                        await targetClient.CreateGroupVariableAsync(
+                            targetResourceId, 
+                            sourceVariable.Key, 
+                            sourceVariable.Value ?? "", 
+                            sourceVariable.VariableType ?? "env_var", 
+                            sourceVariable.Protected, 
+                            sourceVariable.Masked, 
+                            sourceVariable.EnvironmentScope ?? "*",
+                            sourceVariable.Description,
+                            sourceVariable.Raw,
+                            sourceVariable.Hidden
+                        );
+                    }
+                }
+            }
+
+            await CompareResources(); // Refresh comparison
+        }
+        catch (Exception ex)
+        {
+            errorMessage = $"Error copying variables: {ex.Message}";
+        }
+        finally
+        {
+            isCopyingVariables = false;
+            LoadingService.SetLoading(false);
+        }
+    }
+
+    public class ComparisonResultModel
+    {
+        public string SourceName { get; set; } = string.Empty;
+        public string TargetName { get; set; } = string.Empty;
+        public string SourceUrl { get; set; } = string.Empty;
+        public string TargetUrl { get; set; } = string.Empty;
+        public int SourceVariableCount { get; set; }
+        public int TargetVariableCount { get; set; }
+        public List<VariableDifferenceModel> VariableDifferences { get; set; } = new();
+    }
+
+    public class VariableDifferenceModel
+    {
+        public string Key { get; set; } = string.Empty;
+        public bool SourceExists { get; set; }
+        public bool TargetExists { get; set; }
+        public string Status { get; set; } = string.Empty;
+    }
+
+    public class ResourceDataModel
+    {
+        public string Name { get; set; } = string.Empty;
+        public string WebUrl { get; set; } = string.Empty;
+        public Dictionary<string, string> Variables { get; set; } = new();
+    }
+}

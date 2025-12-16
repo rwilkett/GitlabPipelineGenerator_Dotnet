@@ -1,0 +1,88 @@
+@using GitlabPipelineGenerator.GitLabApiClient.Models
+
+@if (Show)
+{
+    <div class="modal fade show d-block" tabindex="-1" style="background-color: rgba(0,0,0,0.5);">
+        <div class="modal-dialog modal-lg">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title">SAML Users</h5>
+                    <button type="button" class="btn-close" @onclick="OnClose"></button>
+                </div>
+                <div class="modal-body">
+                    @if (Members?.Any() == true)
+                    {
+                        <div class="table-responsive">
+                            <table class="table table-striped">
+                                <thead>
+                                    <tr>
+                                        <th>Username</th>
+                                        <th>Name</th>
+                                        <th>Email</th>
+                                        <th>Access Level</th>
+                                        <th>Expires At</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    @foreach (var member in Members)
+                                    {
+                                        <tr>
+                                            <td>@member.Username</td>
+                                            <td>@member.Name</td>
+                                            <td>@member.Email</td>
+                                            <td>
+                                                <span class="badge @GetAccessLevelBadgeClass(member.AccessLevel)">
+                                                    @GetAccessLevelName(member.AccessLevel)
+                                                </span>
+                                            </td>
+                                            <td>@(member.ExpiresAt?.ToString("yyyy-MM-dd") ?? "Never")</td>
+                                        </tr>
+                                    }
+                                </tbody>
+                            </table>
+                        </div>
+                    }
+                    else
+                    {
+                        <p class="text-muted">No SAML users found for this group.</p>
+                    }
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" @onclick="OnClose">Close</button>
+                </div>
+            </div>
+        </div>
+    </div>
+}
+
+@code {
+    [Parameter] public bool Show { get; set; }
+    [Parameter] public List<Member>? Members { get; set; }
+    [Parameter] public EventCallback OnClose { get; set; }
+
+    private string GetAccessLevelName(int accessLevel)
+    {
+        return accessLevel switch
+        {
+            10 => "Guest",
+            20 => "Reporter", 
+            30 => "Developer",
+            40 => "Maintainer",
+            50 => "Owner",
+            _ => accessLevel.ToString()
+        };
+    }
+
+    private string GetAccessLevelBadgeClass(int accessLevel)
+    {
+        return accessLevel switch
+        {
+            10 => "bg-secondary",
+            20 => "bg-info",
+            30 => "bg-success", 
+            40 => "bg-warning",
+            50 => "bg-danger",
+            _ => "bg-light text-dark"
+        };
+    }
+}

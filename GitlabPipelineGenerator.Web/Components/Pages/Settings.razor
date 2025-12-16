@@ -9,27 +9,65 @@
 <div class="row">
     <div class="col-md-6">
         <div class="card">
-            <div class="card-header">
-                <h4>GitLab Connection</h4>
+            <div class="card-header d-flex justify-content-between align-items-center">
+                <h4>GitLab Instances</h4>
+                <button class="btn btn-sm btn-success" @onclick="AddNewInstance">+ Add Instance</button>
             </div>
             <div class="card-body">
-                <EditForm Model="gitlabSettings" OnValidSubmit="SaveGitLabSettings">
-                    <div class="form-group mb-3">
-                        <label for="gitlabUrl">GitLab Server URL:</label>
-                        <InputText id="gitlabUrl" class="form-control" @bind-Value="gitlabSettings.ServerUrl" placeholder="https://gitlab.com" />
+                @if (gitlabSettings.Instances.Any())
+                {
+                    @foreach (var instance in gitlabSettings.Instances)
+                    {
+                        <div class="border p-3 mb-3 @(instance.Id == gitlabSettings.DefaultInstanceId ? "border-primary" : "")">
+                            <div class="d-flex justify-content-between align-items-center mb-2">
+                                <h6>@instance.Name @(instance.Id == gitlabSettings.DefaultInstanceId ? "(Default)" : "")</h6>
+                                <div>
+                                    <button class="btn btn-sm btn-outline-primary me-1" @onclick="() => EditInstance(instance.Id)">Edit</button>
+                                    @if (instance.Id != gitlabSettings.DefaultInstanceId)
+                                    {
+                                        <button class="btn btn-sm btn-outline-success me-1" @onclick="() => SetDefaultInstance(instance.Id)">Set Default</button>
+                                    }
+                                    <button class="btn btn-sm btn-outline-danger" @onclick="() => DeleteInstance(instance.Id)">Delete</button>
+                                </div>
+                            </div>
+                            <small class="text-muted">@instance.ServerUrl</small>
+                        </div>
+                    }
+                }
+                else
+                {
+                    <p class="text-muted">No GitLab instances configured.</p>
+                }
+                
+                @if (showInstanceForm)
+                {
+                    <div class="border p-3 bg-light">
+                        <h6>@(editingInstanceId == null ? "Add New Instance" : "Edit Instance")</h6>
+                        <EditForm Model="currentInstance" OnValidSubmit="SaveInstance">
+                            <div class="form-group mb-3">
+                                <label>Instance Name:</label>
+                                <InputText class="form-control" @bind-Value="currentInstance.Name" placeholder="e.g., Company GitLab" />
+                            </div>
+                            <div class="form-group mb-3">
+                                <label>Server URL:</label>
+                                <InputText class="form-control" @bind-Value="currentInstance.ServerUrl" placeholder="https://gitlab.com" />
+                            </div>
+                            <div class="form-group mb-3">
+                                <label>Personal Access Token:</label>
+                                <InputText type="password" class="form-control" @bind-Value="currentInstance.Token" />
+                                <small class="form-text text-muted">Token with 'read_api' and 'read_repository' scopes</small>
+                            </div>
+                            <div class="form-group mb-3">
+                                <label>Default Group ID:</label>
+                                <InputText class="form-control" @bind-Value="currentInstance.DefaultGroupId" placeholder="e.g., 12345" />
+                            </div>
+                            <div>
+                                <button type="submit" class="btn btn-primary me-2">@(editingInstanceId == null ? "Add" : "Update")</button>
+                                <button type="button" class="btn btn-secondary" @onclick="CancelInstanceForm">Cancel</button>
+                            </div>
+                        </EditForm>
                     </div>
-                    <div class="form-group mb-3">
-                        <label for="gitlabToken">Personal Access Token:</label>
-                        <InputText id="gitlabToken" type="password" class="form-control" @bind-Value="gitlabSettings.Token" />
-                        <small class="form-text text-muted">Token with 'read_api' and 'read_repository' scopes</small>
-                    </div>
-                    <div class="form-group mb-3">
-                        <label for="defaultGroupId">Default Group ID:</label>
-                        <InputText id="defaultGroupId" class="form-control" @bind-Value="gitlabSettings.DefaultGroupId" placeholder="e.g., 12345" />
-                        <small class="form-text text-muted">Default GitLab group ID to load when opening the GitLab page</small>
-                    </div>
-                    <button type="submit" class="btn btn-primary">Save GitLab Settings</button>
-                </EditForm>
+                }
             </div>
         </div>
     </div>
@@ -88,8 +126,11 @@
 }
 
 @code {
-    private GitLabConnectionModel gitlabSettings = new();
+    private GitLabSettingsModel gitlabSettings = new();
     private GOCDConnectionModel gocdSettings = new();
+    private GitLabInstanceModel currentInstance = new();
+    private bool showInstanceForm = false;
+    private string? editingInstanceId = null;
     private string? successMessage;
     private string? errorMessage;
 
@@ -102,10 +143,33 @@
     {
         try
         {
-            var gitlabJson = await JSRuntime.InvokeAsync<string>("localStorage.getItem", "gitlab-settings");
+            var gitlabJson = await JSRuntime.InvokeAsync<string>("localStorage.getItem", "gitlab-instances");
             if (!string.IsNullOrEmpty(gitlabJson))
             {
-                gitlabSettings = System.Text.Json.JsonSerializer.Deserialize<GitLabConnectionModel>(gitlabJson) ?? new();
+                gitlabSettings = System.Text.Json.JsonSerializer.Deserialize<GitLabSettingsModel>(gitlabJson) ?? new();
+            }
+            else
+            {
+                // Migrate from old single instance format
+                var oldJson = await JSRuntime.InvokeAsync<string>("localStorage.getItem", "gitlab-settings");
+                if (!string.IsNullOrEmpty(oldJson))
+                {
+                    var oldSettings = System.Text.Json.JsonSerializer.Deserialize<GitLabConnectionModel>(oldJson);
+                    if (oldSettings != null && !string.IsNullOrEmpty(oldSettings.Token))
+                    {
+                        var instance = new GitLabInstanceModel
+                        {
+                            Id = Guid.NewGuid().ToString(),
+                            Name = "Default GitLab",
+                            ServerUrl = oldSettings.ServerUrl,
+                            Token = oldSettings.Token,
+                            DefaultGroupId = oldSettings.DefaultGroupId
+                        };
+                        gitlabSettings.Instances.Add(instance);
+                        gitlabSettings.DefaultInstanceId = instance.Id;
+                        await SaveGitLabSettings();
+                    }
+                }
             }
 
             var gocdJson = await JSRuntime.InvokeAsync<string>("localStorage.getItem", "gocd-settings");
@@ -125,7 +189,7 @@
         try
         {
             var json = System.Text.Json.JsonSerializer.Serialize(gitlabSettings);
-            await JSRuntime.InvokeVoidAsync("localStorage.setItem", "gitlab-settings", json);
+            await JSRuntime.InvokeVoidAsync("localStorage.setItem", "gitlab-instances", json);
             successMessage = "GitLab settings saved successfully!";
             errorMessage = null;
         }
@@ -134,6 +198,78 @@
             errorMessage = $"Error saving GitLab settings: {ex.Message}";
             successMessage = null;
         }
+    }
+    
+    private void AddNewInstance()
+    {
+        currentInstance = new GitLabInstanceModel();
+        editingInstanceId = null;
+        showInstanceForm = true;
+    }
+    
+    private void EditInstance(string instanceId)
+    {
+        var instance = gitlabSettings.Instances.FirstOrDefault(i => i.Id == instanceId);
+        if (instance != null)
+        {
+            currentInstance = new GitLabInstanceModel
+            {
+                Id = instance.Id,
+                Name = instance.Name,
+                ServerUrl = instance.ServerUrl,
+                Token = instance.Token,
+                DefaultGroupId = instance.DefaultGroupId
+            };
+            editingInstanceId = instanceId;
+            showInstanceForm = true;
+        }
+    }
+    
+    private async Task SaveInstance()
+    {
+        if (editingInstanceId == null)
+        {
+            currentInstance.Id = Guid.NewGuid().ToString();
+            gitlabSettings.Instances.Add(currentInstance);
+            if (gitlabSettings.DefaultInstanceId == null)
+            {
+                gitlabSettings.DefaultInstanceId = currentInstance.Id;
+            }
+        }
+        else
+        {
+            var index = gitlabSettings.Instances.FindIndex(i => i.Id == editingInstanceId);
+            if (index >= 0)
+            {
+                gitlabSettings.Instances[index] = currentInstance;
+            }
+        }
+        
+        await SaveGitLabSettings();
+        CancelInstanceForm();
+    }
+    
+    private void CancelInstanceForm()
+    {
+        showInstanceForm = false;
+        editingInstanceId = null;
+        currentInstance = new GitLabInstanceModel();
+    }
+    
+    private async Task DeleteInstance(string instanceId)
+    {
+        gitlabSettings.Instances.RemoveAll(i => i.Id == instanceId);
+        if (gitlabSettings.DefaultInstanceId == instanceId)
+        {
+            gitlabSettings.DefaultInstanceId = gitlabSettings.Instances.FirstOrDefault()?.Id;
+        }
+        await SaveGitLabSettings();
+    }
+    
+    private async Task SetDefaultInstance(string instanceId)
+    {
+        gitlabSettings.DefaultInstanceId = instanceId;
+        await SaveGitLabSettings();
     }
 
     private async Task SaveGOCDSettings()
