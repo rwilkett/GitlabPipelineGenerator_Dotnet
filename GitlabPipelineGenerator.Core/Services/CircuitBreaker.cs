@@ -42,7 +42,7 @@ public class CircuitBreaker
     /// <returns>Result of the operation</returns>
     public async Task<T> ExecuteAsync<T>(Func<Task<T>> operation, CancellationToken cancellationToken = default)
     {
-        CheckStateAsync(cancellationToken);
+        await CheckStateAsync(cancellationToken);
 
         try
         {
@@ -64,7 +64,7 @@ public class CircuitBreaker
     /// <param name="cancellationToken">Cancellation token</param>
     public async Task ExecuteAsync(Func<Task> operation, CancellationToken cancellationToken = default)
     {
-        CheckStateAsync(cancellationToken);
+        await CheckStateAsync(cancellationToken);
 
         try
         {

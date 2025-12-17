@@ -28,8 +28,9 @@ public class IntelligentPipelineGenerator : IIntelligentPipelineGenerator
     /// Generates a pipeline configuration based on the provided options
     /// </summary>
     /// <param name="options">Pipeline generation options</param>
+    /// <param name="cancellationToken">Cancellation token</param>
     /// <returns>Generated pipeline configuration</returns>
-    public async Task<PipelineConfiguration> GenerateAsync(PipelineOptions options)
+    public async Task<PipelineConfiguration> GenerateAsync(PipelineOptions options, CancellationToken cancellationToken = default)
     {
         if (options == null)
             throw new ArgumentNullException(nameof(options));
@@ -37,11 +38,11 @@ public class IntelligentPipelineGenerator : IIntelligentPipelineGenerator
         // If analysis results are available, use intelligent generation
         if (options.AnalysisResult != null && options.UseAnalysisDefaults)
         {
-            return await GenerateIntelligentPipelineAsync(options);
+            return await GenerateIntelligentPipelineAsync(options, cancellationToken);
         }
 
         // Fall back to base pipeline generator
-        return await _basePipelineGenerator.GenerateAsync(options);
+        return await _basePipelineGenerator.GenerateAsync(options, cancellationToken);
     }
 
     /// <summary>
@@ -81,11 +82,12 @@ public class IntelligentPipelineGenerator : IIntelligentPipelineGenerator
     /// Generates an intelligent pipeline using analysis-enhanced options
     /// </summary>
     /// <param name="options">Analysis-enhanced pipeline options</param>
+    /// <param name="cancellationToken">Cancellation token</param>
     /// <returns>Generated pipeline configuration</returns>
-    private async Task<PipelineConfiguration> GenerateIntelligentPipelineAsync(PipelineOptions options)
+    private async Task<PipelineConfiguration> GenerateIntelligentPipelineAsync(PipelineOptions options, CancellationToken cancellationToken = default)
     {
         // Generate base pipeline
-        var pipeline = await _basePipelineGenerator.GenerateAsync(options);
+        var pipeline = await _basePipelineGenerator.GenerateAsync(options, cancellationToken);
 
         // Enhance pipeline with analysis-based optimizations
         if (options.AnalysisResult != null)

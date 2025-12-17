@@ -11,8 +11,9 @@ public interface IPipelineGenerator
     /// Generates a pipeline configuration based on the provided options
     /// </summary>
     /// <param name="options">Pipeline generation options</param>
+    /// <param name="cancellationToken">Cancellation token</param>
     /// <returns>Generated pipeline configuration</returns>
-    Task<PipelineConfiguration> GenerateAsync(PipelineOptions options);
+    Task<PipelineConfiguration> GenerateAsync(PipelineOptions options, CancellationToken cancellationToken = default);
 
     /// <summary>
     /// Serializes a pipeline configuration to YAML format

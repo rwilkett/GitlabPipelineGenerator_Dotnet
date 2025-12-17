@@ -125,7 +125,7 @@ else if ((projects != null || searchResults != null) && analysisResult == null)
                         ShowVariables="true" 
                         ShowBrowseButton="false" 
                         OnGroupClick="() => OpenSubgroupTab(subgroup)" 
-                        OnViewVariables="() => ShowVariables(subgroup.Variables)" 
+                        OnViewVariables="() => ShowVariables(subgroup.Variables!)" 
                         OnViewSamlLinks="() => ViewSamlLinks(subgroup.Id.ToString(), subgroup.Name)" 
                         OnViewProvisionedUsers="() => ViewProvisionedUsers(subgroup.Id.ToString(), subgroup.Name)" 
                         OnViewSamlUsers="() => ViewSamlUsers(subgroup.Id.ToString(), subgroup.Name)" 
@@ -205,7 +205,7 @@ else if ((projects != null || searchResults != null) && analysisResult == null)
                                                 {
                                                     <span class="badge bg-secondary ms-1">@subgroup.Variables.MaskedVariables Masked</span>
                                                 }
-                                                <br><button class="btn btn-sm btn-outline-info mt-2" @onclick="() => ShowVariables(subgroup.Variables)" @onclick:stopPropagation="true">View Variables</button>
+                                                <br><button class="btn btn-sm btn-outline-info mt-2" @onclick="() => ShowVariables(subgroup.Variables!)" @onclick:stopPropagation="true">View Variables</button>
                                             }
                                         </p>
                                     </div>
@@ -821,7 +821,7 @@ else if (analysisResult != null)
 
 
     
-    private void ShowVariables(ProjectVariablesModel variables)
+    private void ShowVariables(ProjectVariablesModel? variables)
     {
         selectedVariables = variables;
         showVariablesModal = true;
