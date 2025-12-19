@@ -1,0 +1,194 @@
+@page "/reports/gocd-users"
+@using GitlabPipelineGenerator.Web.Models
+@inject IJSRuntime JSRuntime
+@inject LoadingService LoadingService
+
+<PageTitle>GOCD Users</PageTitle>
+
+<h1>GOCD Users</h1>
+
+<div class="card mb-3">
+    <div class="card-header">
+        <h4>Connection Settings</h4>
+    </div>
+    <div class="card-body">
+        <div class="row">
+            <div class="col-md-4">
+                <div class="form-group mb-3">
+                    <label>GoCD Server URL:</label>
+                    <input type="text" class="form-control" @bind="gocdServerUrl"
+                        placeholder="https://your-gocd-server.com" />
+                </div>
+            </div>
+            <div class="col-md-4">
+                <div class="form-group mb-3">
+                    <label>GoCD Token:</label>
+                    <input type="password" class="form-control" @bind="gocdToken" placeholder="Your GoCD API token" />
+                </div>
+            </div>
+            <div class="col-md-4">
+                <div class="form-group mb-3">
+                    <label>&nbsp;</label>
+                    <div>
+                        <button class="btn btn-primary" @onclick="GenerateReport" disabled="@isGenerating">
+                            @if (isGenerating)
+                            {
+                                <span class="spinner-border spinner-border-sm" role="status"></span>
+                                <span>Loading...</span>
+                            }
+                            else
+                            {
+                                <span>Generate Report</span>
+                            }
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+@if (users?.Any() == true)
+{
+    <div class="card">
+        <div class="card-header d-flex justify-content-between align-items-center">
+            <h4>GOCD Users (@users.Count)</h4>
+            <button class="btn btn-success" @onclick="ExportToCsv">
+                <i class="fas fa-download"></i> Export CSV
+            </button>
+        </div>
+        <div class="card-body">
+            <div class="table-responsive">
+                <table class="table table-striped">
+                    <thead>
+                        <tr>
+                            <th>Display Name</th>
+                            <th>Login Name</th>
+                            <th>Enabled</th>
+                            <th>Email</th>
+                            <th>Admin</th>
+                            <th>Roles</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @foreach (var user in users.OrderBy(u => u.DisplayName))
+                        {
+                            <tr>
+                                <td>@user.DisplayName</td>
+                                <td>@user.LoginName</td>
+                                <td>
+                                    @if (user.Enabled)
+                                    {
+                                        <span class="badge bg-success">Yes</span>
+                                    }
+                                    else
+                                    {
+                                        <span class="badge bg-danger">No</span>
+                                    }
+                                </td>
+                                <td>@user.Email</td>
+                                <td>
+                                    @if (user.Admin)
+                                    {
+                                        <span class="badge bg-warning">Yes</span>
+                                    }
+                                    else
+                                    {
+                                        <span class="badge bg-secondary">No</span>
+                                    }
+                                </td>
+                                <td>@string.Join(", ", user.Roles.Select(r => r.Name))</td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+}
+
+@if (!string.IsNullOrEmpty(errorMessage))
+{
+    <div class="alert alert-danger mt-3">@errorMessage</div>
+}
+
+@code {
+    private string gocdServerUrl = string.Empty;
+    private string gocdToken = string.Empty;
+    private bool isGenerating = false;
+    private string? errorMessage;
+    private List<GitlabPipelineGenerator.GOCDApiClient.Models.User>? users;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadSavedSettings();
+    }
+
+    private async Task LoadSavedSettings()
+    {
+        try
+        {
+            var json = await JSRuntime.InvokeAsync<string>("localStorage.getItem", "gocd-settings");
+            if (!string.IsNullOrEmpty(json))
+            {
+                var settings = System.Text.Json.JsonSerializer.Deserialize<GOCDConnectionModel>(json);
+                if (settings != null)
+                {
+                    gocdServerUrl = settings.ServerUrl;
+                    gocdToken = settings.BearerToken ?? string.Empty;
+                }
+            }
+        }
+        catch
+        {
+            // Ignore errors loading settings
+        }
+    }
+
+    private async Task GenerateReport()
+    {
+        if (string.IsNullOrEmpty(gocdServerUrl) || string.IsNullOrEmpty(gocdToken))
+        {
+            errorMessage = "Please provide GoCD server URL and token.";
+            return;
+        }
+
+        isGenerating = true;
+        errorMessage = null;
+        LoadingService.SetLoading(true, "Loading GOCD users...");
+
+        try
+        {
+            var client = new GitlabPipelineGenerator.GOCDApiClient.GOCDApiClient(gocdServerUrl, gocdToken);
+            users = await client.GetUsersAsync();
+        }
+        catch (Exception ex)
+        {
+            errorMessage = $"Error loading users: {ex.Message}";
+        }
+        finally
+        {
+            isGenerating = false;
+            LoadingService.SetLoading(false);
+        }
+    }
+
+    private async Task ExportToCsv()
+    {
+        if (users?.Any() != true) return;
+
+        var csv = new System.Text.StringBuilder();
+        csv.AppendLine("Display Name,Login Name,Enabled,Email,Admin,Roles");
+
+        foreach (var user in users.OrderBy(u => u.DisplayName))
+        {
+            csv.AppendLine($"\"{user.DisplayName}\",\"{user.LoginName}\",{user.Enabled},\"{user.Email}\",{user.Admin},\"{string.Join("; ", user.Roles.Select(r => r.Name))}\"");
+        }
+
+        var fileName = $"gocd-users-{DateTime.Now:yyyy-MM-dd-HHmm}.csv";
+        //var bytes = System.Text.Encoding.UTF8.GetBytes(csv.ToString());
+        //var base64 = Convert.ToBase64String(bytes);
+
+        await JSRuntime.InvokeVoidAsync("downloadFile", fileName, csv.ToString(), "text/csv");
+    }
+}

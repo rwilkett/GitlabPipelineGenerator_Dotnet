@@ -264,15 +264,34 @@ public class GitLabClient : IDisposable
 
     public async Task<List<Member>> GetGroupMembersAsync(string groupId)
     {
-        var response = await _httpClient.GetAsync($"{_baseUrl}/api/v4/groups/{groupId}/members");
+        var allMembers = new List<Member>();
+        var page = 1;
+        const int perPage = 100;
 
-        if (!response.IsSuccessStatusCode)
+        while (true)
         {
-            throw new GitLabApiException($"Failed to get group members: {response.StatusCode}", response.StatusCode);
+            var response = await _httpClient.GetAsync($"{_baseUrl}/api/v4/groups/{groupId}/members/all?per_page={perPage}&page={page}");
+
+            if (!response.IsSuccessStatusCode)
+            {
+                throw new GitLabApiException($"Failed to get group members: {response.StatusCode}", response.StatusCode);
+            }
+
+            var json = await response.Content.ReadAsStringAsync();
+            var members = JsonSerializer.Deserialize<List<Member>>(json, _jsonOptions) ?? new List<Member>();
+            
+            if (members.Count == 0)
+                break;
+                
+            allMembers.AddRange(members);
+            
+            if (members.Count < perPage)
+                break;
+                
+            page++;
         }
 
-        var json = await response.Content.ReadAsStringAsync();
-        return JsonSerializer.Deserialize<List<Member>>(json, _jsonOptions) ?? new List<Member>();
+        return allMembers;
     }
 
     public async Task<List<Group>> GetTopLevelGroupsAsync(int perPage = 100)
@@ -329,13 +348,13 @@ public class GitLabClient : IDisposable
         {
             value = "placeholder_value";
         }
-        
+
         // If variable is masked, we can't copy the actual value
         if (masked && value.Length > 0)
         {
             value = "masked_variable_placeholder";
         }
-        
+
         var payload = new Dictionary<string, object>
         {
             ["key"] = key,
@@ -345,7 +364,7 @@ public class GitLabClient : IDisposable
             ["raw"] = raw,
             ["environment_scope"] = environmentScope
         };
-        
+
         // Use masked_and_hidden when both are true, otherwise use individual flags
         if (masked && hidden)
         {
@@ -356,7 +375,7 @@ public class GitLabClient : IDisposable
             payload["masked"] = masked;
             payload["hidden"] = hidden;
         }
-        
+
         if (!string.IsNullOrEmpty(description))
         {
             payload["description"] = description;
@@ -468,19 +487,19 @@ public class GitLabClient : IDisposable
     public async Task CreateProjectVariableAsync(string projectIdOrPath, string key, string value, string variableType = "env_var", bool @protected = false, bool masked = false, string environmentScope = "*", string? description = null, bool raw = false, bool hidden = false)
     {
         var encodedPath = Uri.EscapeDataString(projectIdOrPath);
-        
+
         // Ensure value is not null or empty and handle masked variables
         if (string.IsNullOrEmpty(value))
         {
             value = "placeholder_value";
         }
-        
+
         // If variable is masked, we can't copy the actual value
         if (masked && value.Length > 0)
         {
             value = "masked_variable_placeholder";
         }
-        
+
         var payload = new Dictionary<string, object>
         {
             ["key"] = key,
@@ -490,7 +509,7 @@ public class GitLabClient : IDisposable
             ["raw"] = raw,
             ["environment_scope"] = environmentScope
         };
-        
+
         // Use masked_and_hidden when both are true, otherwise use individual flags
         if (masked && hidden)
         {
@@ -501,7 +520,7 @@ public class GitLabClient : IDisposable
             payload["masked"] = masked;
             payload["hidden"] = hidden;
         }
-        
+
         if (!string.IsNullOrEmpty(description))
         {
             payload["description"] = description;

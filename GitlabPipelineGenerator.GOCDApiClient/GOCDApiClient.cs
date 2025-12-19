@@ -141,6 +141,19 @@ public class GOCDApiClient : IDisposable
         return JsonSerializer.Deserialize<PipelineConfig>(content, _jsonOptions);
     }
 
+    public async Task<List<User>> GetUsersAsync()
+    {
+        _httpClient.DefaultRequestHeaders.Accept.Clear();
+        _httpClient.DefaultRequestHeaders.Accept.Add(new MediaTypeWithQualityHeaderValue("application/vnd.go.cd.v3+json"));
+        var response = await _httpClient.GetAsync($"{_baseUrl}/go/api/users");
+        response.EnsureSuccessStatusCode();
+
+        var content = await response.Content.ReadAsStringAsync();
+        var userList = JsonSerializer.Deserialize<UserList>(content, _jsonOptions);
+
+        return userList?.Embedded?.Users ?? new List<User>();
+    }
+
     public async Task<List<ProductionDeployment>> GetProductionDeploymentsAsync(DateTime startDate, DateTime endDate)
     {
         var deployments = new List<ProductionDeployment>();
