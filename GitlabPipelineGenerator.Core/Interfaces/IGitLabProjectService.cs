@@ -43,7 +43,7 @@ public interface IGitLabProjectService
     /// <param name="cancellationToken">Cancellation token</param>
     /// <returns>Project permissions information</returns>
     /// <exception cref="ProjectNotFoundException">When project is not found or not accessible</exception>
-    /// <exception cref name="GitLabApiException">When API operation fails</exception>
+    /// <exception cref="GitLabApiException">When API operation fails</exception>
     Task<ProjectPermissions> GetProjectPermissionsAsync(int projectId, CancellationToken cancellationToken = default);
 
     /// <summary>

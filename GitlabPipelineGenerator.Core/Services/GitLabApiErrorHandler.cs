@@ -57,7 +57,7 @@ public class GitLabApiErrorHandler : IGitLabApiErrorHandler
         // If we've exhausted all retries, throw the last exception with context
         throw new GitLabApiException(
             $"Operation failed after {policy.MaxAttempts} attempts. Last error: {lastException?.Message}",
-            lastException);
+            lastException ?? new Exception("Unknown error"));
     }
 
     /// <summary>

@@ -30,14 +30,15 @@ public class EnhancedPipelineGenerator : IPipelineGenerator
     /// Generates a pipeline configuration based on the provided options
     /// </summary>
     /// <param name="options">Pipeline generation options</param>
+    /// <param name="cancellationToken">Cancellation token</param>
     /// <returns>Generated pipeline configuration</returns>
-    public async Task<PipelineConfiguration> GenerateAsync(PipelineOptions options)
+    public async Task<PipelineConfiguration> GenerateAsync(PipelineOptions options, CancellationToken cancellationToken = default)
     {
         if (options == null)
             throw new ArgumentNullException(nameof(options));
 
         // Use the base pipeline generator for standard generation
-        return await _basePipelineGenerator.GenerateAsync(options);
+        return await _basePipelineGenerator.GenerateAsync(options, cancellationToken);
     }
 
     /// <summary>
@@ -186,7 +187,7 @@ public class EnhancedPipelineGenerator : IPipelineGenerator
         // If no template is specified, use standard generation
         if (string.IsNullOrWhiteSpace(generationRequest.TemplateName))
         {
-            return await GenerateAsync(generationRequest.Options);
+            return await GenerateAsync(generationRequest.Options, CancellationToken.None);
         }
 
         // If template is specified but no customizations, use template generation

@@ -4,12 +4,15 @@
     <TargetFramework>net9.0</TargetFramework>
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
+    <WarningsAsErrors />
+    <NoWarn>CS8601;CS8625;CS1591</NoWarn>
   </PropertyGroup>
 
   <ItemGroup>
     <ProjectReference Include="..\GitlabPipelineGenerator.Core\GitlabPipelineGenerator.Core.csproj" />
     <ProjectReference Include="..\GitlabPipelineGenerator.GitLabApiClient\GitlabPipelineGenerator.GitLabApiClient.csproj" />
     <ProjectReference Include="..\GitlabPipelineGenerator.GOCDApiClient\GitlabPipelineGenerator.GOCDApiClient.csproj" />
+    <ProjectReference Include="..\GitlabPipelineGenerator.OctopusApiClient\GitlabPipelineGenerator.OctopusApiClient.csproj" />
   </ItemGroup>
 
 </Project>

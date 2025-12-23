@@ -1,0 +1,130 @@
+@page "/reports/octopus-users"
+@using GitlabPipelineGenerator.Web.Models
+@inject IJSRuntime JSRuntime
+@inject LoadingService LoadingService
+
+<PageTitle>Octopus User Report</PageTitle>
+
+<h1>Octopus User Report</h1>
+
+<div class="card mb-3">
+    <div class="card-header">
+        <h4>Generate Report</h4>
+    </div>
+    <div class="card-body">
+        <button class="btn btn-primary" @onclick="GenerateReport" disabled="@isGenerating">
+            @if (isGenerating)
+            {
+                <span class="spinner-border spinner-border-sm" role="status"></span>
+                <span>Loading...</span>
+            }
+            else
+            {
+                <span>Generate Report</span>
+            }
+        </button>
+    </div>
+</div>
+
+@if (users?.Any() == true)
+{
+    <div class="card">
+        <div class="card-header d-flex justify-content-between align-items-center">
+            <h4>Octopus Users (@users.Count)</h4>
+            <button class="btn btn-success" @onclick="ExportToCsv">
+                <i class="fas fa-download"></i> Export CSV
+            </button>
+        </div>
+        <div class="card-body">
+            <div class="table-responsive">
+                <table class="table table-striped">
+                    <thead>
+                        <tr>
+                            <th>Display Name</th>
+                            <th>Email Address</th>
+                            <th>Username</th>
+                            <th>Is Active</th>
+                            <th>Teams</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @foreach (var user in users.OrderBy(u => u.DisplayName))
+                        {
+                            <tr>
+                                <td>@user.DisplayName</td>
+                                <td>@user.EmailAddress</td>
+                                <td>@user.Username</td>
+                                <td>@(user.IsActive ? "Yes" : "No")</td>
+                                <td>@string.Join(", ", user.Teams.Select(t => t.Name))</td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+}
+
+@if (!string.IsNullOrEmpty(errorMessage))
+{
+    <div class="alert alert-danger mt-3">@errorMessage</div>
+}
+
+@code {
+    private bool isGenerating = false;
+    private string? errorMessage;
+    private List<GitlabPipelineGenerator.OctopusApiClient.Models.UserResource>? users;
+
+    private async Task GenerateReport()
+    {
+        isGenerating = true;
+        errorMessage = null;
+        LoadingService.SetLoading(true, "Loading Octopus users...");
+
+        try
+        {
+            var octopusJson = await JSRuntime.InvokeAsync<string>("localStorage.getItem", "octopus-settings");
+            if (string.IsNullOrEmpty(octopusJson))
+            {
+                errorMessage = "Octopus settings not configured. Please configure in Settings page.";
+                return;
+            }
+
+            var settings = System.Text.Json.JsonSerializer.Deserialize<OctopusConnectionModel>(octopusJson);
+            if (settings == null || string.IsNullOrEmpty(settings.ServerUrl) || string.IsNullOrEmpty(settings.ApiKey))
+            {
+                errorMessage = "Invalid Octopus settings. Please check configuration in Settings page.";
+                return;
+            }
+
+            var client = new GitlabPipelineGenerator.OctopusApiClient.OctopusApiClient(settings.ServerUrl, settings.ApiKey);
+            users = await client.GetUsersAsync();
+        }
+        catch (Exception ex)
+        {
+            errorMessage = $"Error loading Octopus users: {ex.Message}";
+        }
+        finally
+        {
+            isGenerating = false;
+            LoadingService.SetLoading(false);
+        }
+    }
+
+    private async Task ExportToCsv()
+    {
+        if (users?.Any() != true) return;
+
+        var csv = new System.Text.StringBuilder();
+        csv.AppendLine("Display Name,Email Address,Username,Is Active,Teams");
+        
+        foreach (var user in users.OrderBy(u => u.DisplayName))
+        {
+            var teams = string.Join("; ", user.Teams.Select(t => t.Name));
+            csv.AppendLine($"\"{user.DisplayName}\",\"{user.EmailAddress}\",\"{user.Username}\",\"{(user.IsActive ? "Yes" : "No")}\",\"{teams}\"");
+        }
+
+        var fileName = $"octopus-users-{DateTime.Now:yyyy-MM-dd-HHmm}.csv";
+        await JSRuntime.InvokeVoidAsync("downloadFile", fileName, csv.ToString(), "text/csv");
+    }
+}

@@ -23,7 +23,8 @@ public class GOCDApiClient : IDisposable
 
         _jsonOptions = new JsonSerializerOptions
         {
-            PropertyNameCaseInsensitive = true
+            PropertyNameCaseInsensitive = true,
+            Converters = { new GitlabPipelineGenerator.GOCDApiClient.Converters.StringToBooleanConverter() }
         };
     }
 
@@ -41,7 +42,8 @@ public class GOCDApiClient : IDisposable
 
         _jsonOptions = new JsonSerializerOptions
         {
-            PropertyNameCaseInsensitive = true
+            PropertyNameCaseInsensitive = true,
+            Converters = { new GitlabPipelineGenerator.GOCDApiClient.Converters.StringToBooleanConverter() }
         };
     }
 
@@ -139,6 +141,19 @@ public class GOCDApiClient : IDisposable
 
         var content = await response.Content.ReadAsStringAsync();
         return JsonSerializer.Deserialize<PipelineConfig>(content, _jsonOptions);
+    }
+
+    public async Task<List<User>> GetUsersAsync()
+    {
+        _httpClient.DefaultRequestHeaders.Accept.Clear();
+        _httpClient.DefaultRequestHeaders.Accept.Add(new MediaTypeWithQualityHeaderValue("application/vnd.go.cd.v3+json"));
+        var response = await _httpClient.GetAsync($"{_baseUrl}/go/api/users");
+        response.EnsureSuccessStatusCode();
+
+        var content = await response.Content.ReadAsStringAsync();
+        var userList = JsonSerializer.Deserialize<UserList>(content, _jsonOptions);
+
+        return userList?.Embedded?.Users ?? new List<User>();
     }
 
     public async Task<List<ProductionDeployment>> GetProductionDeploymentsAsync(DateTime startDate, DateTime endDate)

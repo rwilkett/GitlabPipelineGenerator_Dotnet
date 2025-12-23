@@ -384,7 +384,7 @@
             {
                 ProjectName = project.Name,
                 PipelinePresent = hasPipeline,
-                DefaultBranch = project.DefaultBranch,
+                DefaultBranch = project.DefaultBranch ?? "main",
                 LastActivity = project.LastActivityAt,
                 ProjectUrl = project.HttpUrlToRepo,
                 GroupPath = groupPath
@@ -407,11 +407,11 @@
         }
     }
 
-    private async Task<bool> CheckForPipelineFile(GitlabPipelineGenerator.GitLabApiClient.GitLabClient client, string projectId, string branch)
+    private async Task<bool> CheckForPipelineFile(GitlabPipelineGenerator.GitLabApiClient.GitLabClient client, string projectId, string? branch)
     {
         try
         {
-            await client.GetFileAsync(projectId, ".gitlab-ci.yml", branch);
+            await client.GetFileAsync(projectId, ".gitlab-ci.yml", branch ?? "main");
             return true;
         }
         catch

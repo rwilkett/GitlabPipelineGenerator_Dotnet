@@ -1,27 +1,24 @@
-﻿using CommandLine;
+using CommandLine;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Configuration;
+using Microsoft.Extensions.Hosting;
 using GitlabPipelineGenerator.CLI.Models;
 using GitlabPipelineGenerator.CLI.Services;
-using GitlabPipelineGenerator.Core.Interfaces;
-using GitlabPipelineGenerator.Core.Services;
-using GitlabPipelineGenerator.Core.Builders;
+using GitlabPipelineGenerator.CLI.Extensions;
 using GitlabPipelineGenerator.Core.Exceptions;
 using GitlabPipelineGenerator.Core.Models.GitLab;
 using GitlabPipelineGenerator.Core.Models;
-using Microsoft.Extensions.Options;
+using GitlabPipelineGenerator.Core.Interfaces;
+using GitlabPipelineGenerator.Core.Services;
 
 namespace GitlabPipelineGenerator.CLI;
 
 /// <summary>
 /// Main program class for the GitLab Pipeline Generator CLI
 /// </summary>
-public class Program
+public static class Program
 {
-    private static IServiceProvider? _serviceProvider;
-    private static ILogger<Program>? _logger;
-
     /// <summary>
     /// Main entry point for the CLI application
     /// </summary>
@@ -37,142 +34,74 @@ public class Program
                 return 0;
             }
 
-            // Configure services
-            ConfigureServices();
-            _logger = _serviceProvider!.GetRequiredService<ILogger<Program>>();
+            // Build host with proper DI container
+            using var host = CreateHostBuilder(args).Build();
+            var loggerFactory = host.Services.GetRequiredService<ILoggerFactory>();
+            var logger = loggerFactory.CreateLogger("Program");
 
             // Parse command-line arguments
             var result = await Parser.Default.ParseArguments<CommandLineOptions>(args)
-                .WithParsedAsync(async options => await RunAsync(options));
+                .WithParsedAsync(async options => await RunAsync(options, host.Services));
 
             return result.Tag == ParserResultType.Parsed ? 0 : 1;
         }
         catch (Exception ex)
         {
             Console.Error.WriteLine($"Fatal error: {ex.Message}");
-            if (_logger != null)
-            {
-                _logger.LogCritical(ex, "Fatal error occurred");
-            }
             return 1;
-        }
-        finally
-        {
-            // Dispose services
-            if (_serviceProvider is IDisposable disposable)
-            {
-                disposable.Dispose();
-            }
         }
     }
 
     /// <summary>
-    /// Configures dependency injection services
+    /// Creates the host builder with proper dependency injection configuration
     /// </summary>
-    private static void ConfigureServices()
-    {
-        var services = new ServiceCollection();
-
-        // Configure configuration
-        var configuration = new ConfigurationBuilder()
-            .AddJsonFile("appsettings.json", optional: true, reloadOnChange: true)
-            .AddEnvironmentVariables()
-            .Build();
-
-        services.AddSingleton<IConfiguration>(configuration);
-
-        // Configure GitLab settings
-        services.Configure<GitLabApiSettings>(configuration.GetSection("GitLab"));
-        services.AddSingleton<GitLabApiSettings>(provider =>
-            provider.GetRequiredService<IOptions<GitLabApiSettings>>().Value);
-
-        // Configure logging
-        services.AddLogging(builder =>
-        {
-            builder.AddConfiguration(configuration.GetSection("Logging"));
-            builder.AddConsole();
-            builder.SetMinimumLevel(LogLevel.Information);
-        });
-
-        // Register Core services
-        services.AddTransient<IPipelineGenerator, PipelineGenerator>();
-        services.AddTransient<IStageBuilder, StageBuilder>();
-        services.AddTransient<IJobBuilder, JobBuilder>();
-        services.AddTransient<IVariableBuilder, VariableBuilder>();
-        services.AddTransient<YamlSerializationService>();
-        services.AddTransient<ValidationService>();
-
-        // Register template services if they exist
-        services.AddTransient<ITemplateCustomizationService, TemplateCustomizationService>();
-
-        // Register pipeline templates
-        services.AddTransient<GitlabPipelineGenerator.Core.Templates.DotNetProjectTemplate>();
-        services.AddTransient<GitlabPipelineGenerator.Core.Templates.PythonProjectTemplate>();
-        services.AddTransient<GitlabPipelineGenerator.Core.Templates.JavaScriptProjectTemplate>();
-
-        // Configure template service with all templates
-        services.AddSingleton<IPipelineTemplateService>(provider =>
-        {
-            var templateService = new PipelineTemplateService();
-            templateService.RegisterTemplate(provider.GetRequiredService<GitlabPipelineGenerator.Core.Templates.DotNetProjectTemplate>());
-            templateService.RegisterTemplate(provider.GetRequiredService<GitlabPipelineGenerator.Core.Templates.PythonProjectTemplate>());
-            templateService.RegisterTemplate(provider.GetRequiredService<GitlabPipelineGenerator.Core.Templates.JavaScriptProjectTemplate>());
-            return templateService;
-        });
-
-        // Register GitLab API services
-        services.AddTransient<IGitLabAuthenticationService, GitLabAuthenticationService>();
-        services.AddTransient<IGitLabProjectService, GitLabProjectService>();
-        services.AddTransient<IProjectAnalysisService, ProjectAnalysisService>();
-        services.AddTransient<IFilePatternAnalyzer, FilePatternAnalyzer>();
-        services.AddTransient<IDependencyAnalyzer, DependencyAnalyzer>();
-        services.AddTransient<IConfigurationAnalyzer, ConfigurationAnalyzer>();
-        services.AddTransient<IAnalysisToPipelineMappingService, AnalysisToPipelineMappingService>();
-        services.AddTransient<IntelligentPipelineGenerator>();
-
-        // Register GitLab error handling and resilience services
-        services.AddSingleton<GitLabApiErrorHandler>();
-        services.AddSingleton<CircuitBreaker>();
-        services.AddTransient<ResilientGitLabService>();
-        services.AddTransient<IGitLabFallbackService, GitLabFallbackService>();
-        services.AddTransient<DegradedAnalysisService>();
-
-        // Register configuration management services
-        services.AddSingleton<ICredentialStorageService, CrossPlatformCredentialStorageService>();
-        services.AddTransient<IConfigurationProfileService, ConfigurationProfileService>();
-        services.AddTransient<IConfigurationManagementService, ConfigurationManagementService>();
-
-        // Register GitLab connection and validation services
-        services.AddTransient<GitLabConnectionValidator>();
-        services.AddTransient<IGitLabPermissionValidator, GitLabPermissionValidator>();
-        services.AddTransient<IGitLabApiErrorHandler, GitLabApiErrorHandler>();
-
-        // Register enhanced pipeline generator
-        services.AddTransient<EnhancedPipelineGenerator>();
-
-        // Register CLI services
-        services.AddTransient<OutputFormatter>();
-        services.AddTransient<VerboseOutputService>();
-        services.AddTransient<UserFriendlyErrorService>();
-
-        _serviceProvider = services.BuildServiceProvider();
-    }
+    /// <param name="args">Command-line arguments</param>
+    /// <returns>Configured host builder</returns>
+    private static IHostBuilder CreateHostBuilder(string[] args) =>
+        Host.CreateDefaultBuilder(args)
+            .ConfigureAppConfiguration((context, config) =>
+            {
+                config.AddJsonFile("appsettings.json", optional: true, reloadOnChange: true)
+                      .AddEnvironmentVariables("GITLAB_PIPELINE_GEN_")
+                      .AddCommandLine(args);
+            })
+            .ConfigureLogging((context, logging) =>
+            {
+                logging.ClearProviders()
+                       .AddConsole()
+                       .AddConfiguration(context.Configuration.GetSection("Logging"));
+            })
+            .ConfigureServices((context, services) =>
+            {
+                // Register configuration sections
+                services.Configure<GitLabApiSettings>(context.Configuration.GetSection("GitLab"));
+                
+                // Register core services using extension method
+                services.AddGitLabPipelineGenerator(context.Configuration);
+                
+                // Register CLI-specific services
+                services.AddCliServices();
+            })
+            .UseConsoleLifetime();
 
     /// <summary>
     /// Runs the pipeline generation with the provided options
     /// </summary>
     /// <param name="options">Parsed command-line options</param>
+    /// <param name="serviceProvider">Service provider for dependency injection</param>
     /// <returns>Task representing the async operation</returns>
-    private static async Task RunAsync(CommandLineOptions options)
+    private static async Task RunAsync(CommandLineOptions options, IServiceProvider serviceProvider)
     {
-        _logger!.LogInformation("Starting GitLab Pipeline Generator CLI");
+        var loggerFactory = serviceProvider.GetRequiredService<ILoggerFactory>();
+        var logger = loggerFactory.CreateLogger("Program");
+        logger.LogInformation("Starting GitLab Pipeline Generator CLI");
 
         try
         {
             // Configure logging level based on verbose flag
-
+            if (options.Verbose)
             {
-                _logger?.LogDebug("Verbose logging enabled");
+                logger.LogDebug("Verbose logging enabled");
             }
 
             // Validate command-line options
@@ -212,7 +141,7 @@ public class Program
             if (options.ValidateOnly)
             {
                 Console.WriteLine("✓ Command-line options are valid");
-                _logger?.LogInformation("Options validation completed successfully");
+                logger.LogInformation("Options validation completed successfully");
                 return;
             }
 
@@ -220,37 +149,37 @@ public class Program
             if (options.ShowSample)
             {
                 SampleOutputService.ShowSampleOutput(options.ProjectType);
-                _logger?.LogInformation("Sample output displayed for project type: {ProjectType}", options.ProjectType);
+                logger.LogInformation("Sample output displayed for project type: {ProjectType}", options.ProjectType);
                 return;
             }
 
             // Handle GitLab project discovery operations
             if (options.ListProjects || !string.IsNullOrEmpty(options.SearchProjects))
             {
-                await HandleProjectDiscoveryAsync(options);
+                await HandleProjectDiscoveryAsync(options, serviceProvider);
                 return;
             }
 
             // Handle GitLab project analysis workflow
             if (options.AnalyzeProject)
             {
-                await HandleProjectAnalysisWorkflowAsync(options);
+                await HandleProjectAnalysisWorkflowAsync(options, serviceProvider);
                 return;
             }
 
             // Convert CLI options to pipeline options
             var pipelineOptions = OptionsConverter.ToPipelineOptions(options);
-            _logger?.LogDebug("Converted CLI options to pipeline options");
+            logger.LogDebug("Converted CLI options to pipeline options");
 
             // Validate pipeline options using ValidationService
             try
             {
-                GitlabPipelineGenerator.Core.Services.ValidationService.ValidateAndThrow(pipelineOptions);
-                _logger?.LogDebug("Pipeline options validation passed");
+                ValidationService.ValidateAndThrow(pipelineOptions);
+                logger.LogDebug("Pipeline options validation passed");
             }
             catch (InvalidPipelineOptionsException ex)
             {
-                _logger?.LogError("Pipeline options validation failed: {Errors}", string.Join(", ", ex.ValidationErrors));
+                logger.LogError("Pipeline options validation failed: {Errors}", string.Join(", ", ex.ValidationErrors));
 
                 Console.Error.WriteLine("Pipeline configuration validation failed:");
                 foreach (var error in ex.ValidationErrors)
@@ -259,7 +188,7 @@ public class Program
                 }
 
                 // Provide helpful suggestions
-                var suggestions = GitlabPipelineGenerator.Core.Services.ValidationService.GetValidationSuggestions(ex.ValidationErrors);
+                var suggestions = ValidationService.GetValidationSuggestions(ex.ValidationErrors);
                 if (suggestions.Any())
                 {
                     Console.WriteLine();
@@ -274,18 +203,18 @@ public class Program
             }
 
             // Generate pipeline
-            var pipelineGenerator = _serviceProvider!.GetRequiredService<IPipelineGenerator>();
-            _logger?.LogInformation("Generating pipeline for project type: {ProjectType}", pipelineOptions.ProjectType);
+            var pipelineGenerator = serviceProvider.GetRequiredService<IPipelineGenerator>();
+            logger.LogInformation("Generating pipeline for project type: {ProjectType}", pipelineOptions.ProjectType);
 
             var pipeline = await pipelineGenerator.GenerateAsync(pipelineOptions);
-            _logger?.LogInformation("Pipeline generated successfully with {JobCount} jobs", pipeline.Jobs.Count);
+            logger.LogInformation("Pipeline generated successfully with {JobCount} jobs", pipeline.Jobs.Count);
 
             // Serialize to YAML
             var yamlContent = pipelineGenerator.SerializeToYaml(pipeline);
-            _logger?.LogDebug("Pipeline serialized to YAML ({Length} characters)", yamlContent.Length);
+            logger.LogDebug("Pipeline serialized to YAML ({Length} characters)", yamlContent.Length);
 
             // Handle output
-            var outputFormatter = _serviceProvider!.GetRequiredService<OutputFormatter>();
+            var outputFormatter = serviceProvider.GetRequiredService<OutputFormatter>();
 
             // Validate YAML if verbose mode is enabled
             if (options.Verbose)
@@ -303,7 +232,7 @@ public class Program
                     outputFormatter.ShowPipelineStats(yamlContent, options.Verbose);
                 }
 
-                _logger?.LogInformation("Dry run completed successfully");
+                logger.LogInformation("Dry run completed successfully");
             }
             else if (options.ConsoleOutput)
             {
@@ -314,7 +243,7 @@ public class Program
                     outputFormatter.ShowPipelineStats(yamlContent, options.Verbose);
                 }
 
-                _logger?.LogInformation("Pipeline output written to console");
+                logger.LogInformation("Pipeline output written to console");
             }
             else
             {
@@ -326,14 +255,14 @@ public class Program
                     outputFormatter.ShowPipelineStats(yamlContent, options.Verbose);
                 }
 
-                _logger?.LogInformation("Pipeline written to file: {OutputPath}", outputPath);
+                logger.LogInformation("Pipeline written to file: {OutputPath}", outputPath);
             }
 
             Console.WriteLine("✓ Pipeline generation completed successfully");
         }
         catch (InvalidPipelineOptionsException ex)
         {
-            _logger?.LogError(ex, "Invalid pipeline options");
+            logger.LogError(ex, "Invalid pipeline options");
             Console.Error.WriteLine("Pipeline options validation failed:");
             foreach (var error in ex.ValidationErrors)
             {
@@ -343,7 +272,7 @@ public class Program
         }
         catch (PipelineGenerationException ex)
         {
-            _logger?.LogError(ex, "Pipeline generation failed");
+            logger.LogError(ex, "Pipeline generation failed");
             Console.Error.WriteLine($"Pipeline generation failed: {ex.Message}");
             if (options.Verbose && ex.InnerException != null)
             {
@@ -353,7 +282,7 @@ public class Program
         }
         catch (YamlSerializationException ex)
         {
-            _logger?.LogError(ex, "YAML serialization failed");
+            logger.LogError(ex, "YAML serialization failed");
             Console.Error.WriteLine($"YAML serialization failed: {ex.Message}");
             if (options.Verbose && ex.InnerException != null)
             {
@@ -363,7 +292,7 @@ public class Program
         }
         catch (Exception ex)
         {
-            _logger?.LogError(ex, "Unexpected error occurred");
+            logger.LogError(ex, "Unexpected error occurred");
             Console.Error.WriteLine($"An unexpected error occurred: {ex.Message}");
             if (options.Verbose)
             {
@@ -451,10 +380,13 @@ public class Program
     /// Handles GitLab project discovery operations (list/search projects)
     /// </summary>
     /// <param name="options">Command-line options</param>
+    /// <param name="serviceProvider">Service provider for dependency injection</param>
     /// <returns>Task representing the async operation</returns>
-    private static async Task HandleProjectDiscoveryAsync(CommandLineOptions options)
+    private static async Task HandleProjectDiscoveryAsync(CommandLineOptions options, IServiceProvider serviceProvider)
     {
-        _logger?.LogInformation("Starting GitLab project discovery");
+        var loggerFactory = serviceProvider.GetRequiredService<ILoggerFactory>();
+        var logger = loggerFactory.CreateLogger("Program");
+        logger.LogInformation("Starting GitLab project discovery");
 
         var verboseOutput = new VerboseOutputService(options.Verbose);
         var errorService = new UserFriendlyErrorService(options.Verbose);
@@ -462,7 +394,7 @@ public class Program
         try
         {
             // Authenticate with GitLab
-            var authService = _serviceProvider!.GetRequiredService<IGitLabAuthenticationService>();
+            var authService = serviceProvider.GetRequiredService<IGitLabAuthenticationService>();
             var connectionOptions = CreateGitLabConnectionOptions(options);
 
             var gitlabClient = await ProgressIndicatorService.ExecuteWithProgressAsync(
@@ -470,7 +402,7 @@ public class Program
                 "Authenticating with GitLab",
                 "GitLab authentication");
 
-            _logger?.LogInformation("Successfully authenticated with GitLab");
+            logger.LogInformation("Successfully authenticated with GitLab");
 
             if (options.Verbose)
             {
@@ -479,7 +411,7 @@ public class Program
             }
 
             // Get project service and set authenticated client
-            var projectService = _serviceProvider!.GetRequiredService<IGitLabProjectService>();
+            var projectService = serviceProvider.GetRequiredService<IGitLabProjectService>();
             projectService.SetAuthenticatedClient(gitlabClient);
 
             if (options.ListProjects)
@@ -493,7 +425,7 @@ public class Program
         }
         catch (Exception ex)
         {
-            _logger?.LogError(ex, "GitLab project discovery failed");
+            logger.LogError(ex, "GitLab project discovery failed");
 
             errorService.DisplayError(ex, "GitLab project discovery");
             verboseOutput.DisplayErrorDetails(ex, "Project discovery");
@@ -506,10 +438,13 @@ public class Program
     /// Handles GitLab project analysis workflow
     /// </summary>
     /// <param name="options">Command-line options</param>
+    /// <param name="serviceProvider">Service provider for dependency injection</param>
     /// <returns>Task representing the async operation</returns>
-    private static async Task HandleProjectAnalysisWorkflowAsync(CommandLineOptions options)
+    private static async Task HandleProjectAnalysisWorkflowAsync(CommandLineOptions options, IServiceProvider serviceProvider)
     {
-        _logger?.LogInformation("Starting GitLab project analysis workflow");
+        var loggerFactory = serviceProvider.GetRequiredService<ILoggerFactory>();
+        var logger = loggerFactory.CreateLogger("Program");
+        logger.LogInformation("Starting GitLab project analysis workflow");
 
         var verboseOutput = new VerboseOutputService(options.Verbose);
         var errorService = new UserFriendlyErrorService(options.Verbose);
@@ -517,7 +452,7 @@ public class Program
         try
         {
             // Authenticate with GitLab
-            var authService = _serviceProvider!.GetRequiredService<IGitLabAuthenticationService>();
+            var authService = serviceProvider.GetRequiredService<IGitLabAuthenticationService>();
             var connectionOptions = CreateGitLabConnectionOptions(options);
 
             var gitlabClient = await ProgressIndicatorService.ExecuteWithProgressAsync(
@@ -526,19 +461,19 @@ public class Program
                 "GitLab authentication");
 
             var userInfo = await authService.GetCurrentUserAsync();
-            _logger?.LogInformation("Successfully authenticated with GitLab");
+            logger.LogInformation("Successfully authenticated with GitLab");
 
             verboseOutput.DisplayAuthenticationDetails(connectionOptions, userInfo);
 
             // Get project service and set authenticated client
-            var projectService = _serviceProvider!.GetRequiredService<IGitLabProjectService>();
+            var projectService = serviceProvider.GetRequiredService<IGitLabProjectService>();
             projectService.SetAuthenticatedClient(gitlabClient);
             var project = await ProgressIndicatorService.ExecuteWithProgressAsync(
                 () => projectService.GetProjectAsync(options.GitLabProject!),
                 "Retrieving project information",
                 "Project information retrieved");
 
-            _logger?.LogInformation("Retrieved project: {ProjectName} ({ProjectId})", project.Name, project.Id);
+            logger.LogInformation("Retrieved project: {ProjectName} ({ProjectId})", project.Name, project.Id);
 
             Console.WriteLine($"📋 Analyzing project: {project.Name}");
             Console.WriteLine($"   Path: {project.FullPath}");
@@ -550,7 +485,7 @@ public class Program
             verboseOutput.DisplayProjectDetails(project, permissions);
 
             // Perform project analysis
-            var analysisService = _serviceProvider!.GetRequiredService<IProjectAnalysisService>();
+            var analysisService = serviceProvider.GetRequiredService<IProjectAnalysisService>();
             analysisService.SetAuthenticatedClient(gitlabClient);
             var analysisOptions = CreateAnalysisOptions(options);
 
@@ -561,7 +496,7 @@ public class Program
                 "Analyzing project structure and dependencies",
                 "Project analysis");
 
-            _logger?.LogInformation("Project analysis completed with confidence: {Confidence}", analysisResult.Confidence);
+            logger.LogInformation("Project analysis completed with confidence: {Confidence}", analysisResult.Confidence);
 
             // Show analysis results if requested
             if (options.ShowAnalysis)
@@ -595,24 +530,24 @@ public class Program
             }
 
             // Generate pipeline using intelligent generator
-            var intelligentGenerator = _serviceProvider!.GetRequiredService<IntelligentPipelineGenerator>();
-            _logger?.LogInformation("Generating intelligent pipeline");
+            var intelligentGenerator = serviceProvider.GetRequiredService<IntelligentPipelineGenerator>();
+            logger.LogInformation("Generating intelligent pipeline");
 
             var pipeline = await ProgressIndicatorService.ExecuteWithProgressAsync(
                 () => intelligentGenerator.GenerateAsync(enhancedOptions),
                 "Generating intelligent pipeline",
                 "Pipeline generation");
 
-            _logger?.LogInformation("Intelligent pipeline generated successfully with {JobCount} jobs", pipeline.Jobs.Count);
+            logger.LogInformation("Intelligent pipeline generated successfully with {JobCount} jobs", pipeline.Jobs.Count);
 
             verboseOutput.DisplayPipelineGenerationDetails(pipeline, enhancedOptions);
 
             // Serialize to YAML
             var yamlContent = intelligentGenerator.SerializeToYaml(pipeline);
-            _logger?.LogDebug("Pipeline serialized to YAML ({Length} characters)", yamlContent.Length);
+            logger.LogDebug("Pipeline serialized to YAML ({Length} characters)", yamlContent.Length);
 
             // Handle output
-            var outputFormatter = _serviceProvider!.GetRequiredService<OutputFormatter>();
+            var outputFormatter = serviceProvider.GetRequiredService<OutputFormatter>();
 
             // Validate YAML if verbose mode is enabled
             if (options.Verbose)
@@ -631,7 +566,7 @@ public class Program
                     outputFormatter.ShowPipelineStats(yamlContent, options.Verbose);
                 }
 
-                _logger?.LogInformation("Dry run completed successfully");
+                logger.LogInformation("Dry run completed successfully");
             }
             else if (options.ConsoleOutput)
             {
@@ -642,7 +577,7 @@ public class Program
                     outputFormatter.ShowPipelineStats(yamlContent, options.Verbose);
                 }
 
-                _logger?.LogInformation("Pipeline output written to console");
+                logger.LogInformation("Pipeline output written to console");
             }
             else
             {
@@ -654,7 +589,7 @@ public class Program
                     outputFormatter.ShowPipelineStats(yamlContent, options.Verbose);
                 }
 
-                _logger?.LogInformation("Pipeline written to file: {OutputPath}", outputPath);
+                logger.LogInformation("Pipeline written to file: {OutputPath}", outputPath);
             }
 
             Console.WriteLine("✓ Intelligent pipeline generation completed successfully");
@@ -666,7 +601,7 @@ public class Program
         }
         catch (Exception ex)
         {
-            _logger?.LogError(ex, "GitLab project analysis workflow failed");
+            logger.LogError(ex, "GitLab project analysis workflow failed");
 
             errorService.DisplayError(ex, "GitLab project analysis workflow");
             verboseOutput.DisplayErrorDetails(ex, "Project analysis workflow");

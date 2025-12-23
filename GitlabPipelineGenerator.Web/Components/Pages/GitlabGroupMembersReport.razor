@@ -1,0 +1,201 @@
+@page "/reports/gitlab-group-members"
+@using GitlabPipelineGenerator.Web.Models
+@inject IJSRuntime JSRuntime
+@inject LoadingService LoadingService
+
+<PageTitle>GitLab Group Members</PageTitle>
+
+<h1>GitLab Group Members</h1>
+
+<div class="card mb-3">
+    <div class="card-header">
+        <h4>Connection Settings</h4>
+    </div>
+    <div class="card-body">
+        <div class="row">
+            <div class="col-md-4">
+                <div class="form-group mb-3">
+                    <label>GitLab Instance:</label>
+                    <select class="form-control" value="@selectedInstance" @onchange="OnInstanceSelected">
+                        <option value="">-- Select Instance --</option>
+                        @foreach (var instance in instances)
+                        {
+                            <option value="@instance.Id">@instance.Name</option>
+                        }
+                    </select>
+                </div>
+            </div>
+            <div class="col-md-4">
+                <div class="form-group mb-3">
+                    <label>Group Name:</label>
+                    <input type="text" class="form-control" @bind="groupName" placeholder="group/subgroup" />
+                </div>
+            </div>
+            <div class="col-md-4">
+                <div class="form-group mb-3">
+                    <label>&nbsp;</label>
+                    <div>
+                        <button class="btn btn-primary" @onclick="GenerateReport" disabled="@isGenerating">
+                            @if (isGenerating)
+                            {
+                                <span class="spinner-border spinner-border-sm" role="status"></span>
+                                <span>Loading...</span>
+                            }
+                            else
+                            {
+                                <span>Generate Report</span>
+                            }
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+@if (members?.Any() == true)
+{
+    <div class="card">
+        <div class="card-header d-flex justify-content-between align-items-center">
+            <h4>Group Members (including subgroups): @groupName (@members.Count)</h4>
+            <button class="btn btn-success" @onclick="ExportToCsv">
+                <i class="fas fa-download"></i> Export CSV
+            </button>
+        </div>
+        <div class="card-body">
+            <div class="table-responsive">
+                <table class="table table-striped">
+                    <thead>
+                        <tr>
+                            <th>Name</th>
+                            <th>Username</th>
+                            <th>Email</th>
+                            <th>Access Level</th>
+                            <th>Expires At</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @foreach (var member in members.OrderBy(m => m.Name))
+                        {
+                            <tr>
+                                <td>@member.Name</td>
+                                <td>@member.Username</td>
+                                <td>@member.Email</td>
+                                <td>@GetAccessLevelName(member.AccessLevel)</td>
+                                <td>@(member.ExpiresAt?.ToString("yyyy-MM-dd") ?? "Never")</td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+}
+
+@if (!string.IsNullOrEmpty(errorMessage))
+{
+    <div class="alert alert-danger mt-3">@errorMessage</div>
+}
+
+@code {
+    private string selectedInstance = string.Empty;
+    private string groupName = string.Empty;
+    private bool isGenerating = false;
+    private string? errorMessage;
+    private List<GitlabPipelineGenerator.GitLabApiClient.Models.Member>? members;
+    private List<GitLabInstanceModel> instances = new();
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadInstances();
+    }
+
+    private async Task LoadInstances()
+    {
+        try
+        {
+            var json = await JSRuntime.InvokeAsync<string>("localStorage.getItem", "gitlab-instances");
+            if (!string.IsNullOrEmpty(json))
+            {
+                var settings = System.Text.Json.JsonSerializer.Deserialize<GitLabSettingsModel>(json);
+                instances = settings?.Instances ?? new List<GitLabInstanceModel>();
+            }
+        }
+        catch
+        {
+            // Ignore errors loading instances
+        }
+    }
+
+    private void OnInstanceSelected(ChangeEventArgs e)
+    {
+        selectedInstance = e.Value?.ToString() ?? string.Empty;
+    }
+
+    private async Task GenerateReport()
+    {
+        if (string.IsNullOrEmpty(selectedInstance) || string.IsNullOrEmpty(groupName))
+        {
+            errorMessage = "Please select a GitLab instance and enter a group name.";
+            return;
+        }
+
+        var instance = instances.FirstOrDefault(i => i.Id == selectedInstance);
+        if (instance == null)
+        {
+            errorMessage = "Selected instance not found.";
+            return;
+        }
+
+        isGenerating = true;
+        errorMessage = null;
+        LoadingService.SetLoading(true, "Loading group members (with pagination)...");
+
+        try
+        {
+            var client = new GitlabPipelineGenerator.GitLabApiClient.GitLabClient(instance.ServerUrl, instance.Token);
+            members = await client.GetGroupMembersAsync(groupName);
+        }
+        catch (Exception ex)
+        {
+            errorMessage = $"Error loading group members: {ex.Message}";
+        }
+        finally
+        {
+            isGenerating = false;
+            LoadingService.SetLoading(false);
+        }
+    }
+
+    private async Task ExportToCsv()
+    {
+        if (members?.Any() != true) return;
+
+        var csv = new System.Text.StringBuilder();
+        csv.AppendLine("Name,Username,Email,Access Level,Expires At");
+        
+        foreach (var member in members.OrderBy(m => m.Name))
+        {
+            csv.AppendLine($"\"{member.Name}\",\"{member.Username}\",\"{member.Email}\",\"{GetAccessLevelName(member.AccessLevel)}\",\"{member.ExpiresAt?.ToString("yyyy-MM-dd") ?? "Never"}\"");
+        }
+
+        var fileName = $"gitlab-group-members-{groupName.Replace("/", "-")}-{DateTime.Now:yyyy-MM-dd-HHmm}.csv";
+        //var bytes = System.Text.Encoding.UTF8.GetBytes(csv.ToString());
+        //var base64 = Convert.ToBase64String(bytes);
+        
+        await JSRuntime.InvokeVoidAsync("downloadFile", fileName, csv.ToString(), "text/csv");
+    }
+
+    private string GetAccessLevelName(int accessLevel)
+    {
+        return accessLevel switch
+        {
+            10 => "Guest",
+            20 => "Reporter",
+            30 => "Developer",
+            40 => "Maintainer",
+            50 => "Owner",
+            _ => accessLevel.ToString()
+        };
+    }
+}

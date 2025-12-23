@@ -27,25 +27,17 @@ public class PipelineGenerator : IPipelineGenerator
         _yamlService = yamlService ?? throw new ArgumentNullException(nameof(yamlService));
     }
 
-    public PipelineGenerator(
-        IStageBuilder stageBuilder,
-        IJobBuilder jobBuilder,
-        IVariableBuilder variableBuilder)
-        : this(stageBuilder, jobBuilder, variableBuilder, new YamlSerializationService())
-    {
-    }
-
     /// <summary>
     /// Generates a pipeline configuration based on the provided options
     /// </summary>
     /// <param name="options">Pipeline generation options</param>
+    /// <param name="cancellationToken">Cancellation token</param>
     /// <returns>Generated pipeline configuration</returns>
     /// <exception cref="ArgumentNullException">Thrown when options is null</exception>
-    /// <exception cref="InvalidOperationException">Thrown when pipeline generation fails</exception>
-    public async Task<PipelineConfiguration> GenerateAsync(PipelineOptions options)
+    /// <exception cref="PipelineGenerationException">Thrown when pipeline generation fails</exception>
+    public async Task<PipelineConfiguration> GenerateAsync(PipelineOptions options, CancellationToken cancellationToken = default)
     {
-        if (options == null)
-            throw new ArgumentNullException(nameof(options));
+        ArgumentNullException.ThrowIfNull(options);
 
         // Validate options using ValidationService
         ValidationService.ValidateAndThrow(options);
@@ -55,17 +47,18 @@ public class PipelineGenerator : IPipelineGenerator
             var pipeline = new PipelineConfiguration();
 
             // Set stages
-            pipeline.Stages = await _stageBuilder.BuildStagesAsync(options);
+            pipeline.Stages = await _stageBuilder.BuildStagesAsync(options).ConfigureAwait(false);
 
             // Generate global variables
-            pipeline.Variables = await _variableBuilder.BuildGlobalVariablesAsync(options);
+            pipeline.Variables = await _variableBuilder.BuildGlobalVariablesAsync(options).ConfigureAwait(false);
 
             // Generate jobs for each stage
             var jobs = new Dictionary<string, Job>();
             
             foreach (var stage in pipeline.Stages)
             {
-                var stageJobs = await _jobBuilder.BuildJobsForStageAsync(stage, options);
+                cancellationToken.ThrowIfCancellationRequested();
+                var stageJobs = await _jobBuilder.BuildJobsForStageAsync(stage, options).ConfigureAwait(false);
                 foreach (var job in stageJobs)
                 {
                     jobs[job.Key] = job.Value;
@@ -75,24 +68,29 @@ public class PipelineGenerator : IPipelineGenerator
             // Add custom jobs
             foreach (var customJob in options.CustomJobs)
             {
-                var job = await _jobBuilder.BuildCustomJobAsync(customJob, options);
+                cancellationToken.ThrowIfCancellationRequested();
+                var job = await _jobBuilder.BuildCustomJobAsync(customJob, options).ConfigureAwait(false);
                 jobs[customJob.Name] = job;
             }
 
             pipeline.Jobs = jobs;
 
             // Set default configuration
-            pipeline.Default = await _variableBuilder.BuildDefaultConfigurationAsync(options);
+            pipeline.Default = await _variableBuilder.BuildDefaultConfigurationAsync(options).ConfigureAwait(false);
 
             // Set workflow rules if needed
             if (ShouldAddWorkflowRules(options))
             {
-                pipeline.Workflow = await BuildWorkflowRulesAsync(options);
+                pipeline.Workflow = BuildWorkflowRules(options);
             }
 
             return pipeline;
         }
-        catch (Exception ex) when (!(ex is ArgumentNullException || ex is InvalidPipelineOptionsException))
+        catch (OperationCanceledException)
+        {
+            throw;
+        }
+        catch (Exception ex) when (ex is not (ArgumentNullException or InvalidPipelineOptionsException))
         {
             throw new PipelineGenerationException($"Failed to generate pipeline: {ex.Message}", options, "generation", ex);
         }
@@ -131,9 +129,8 @@ public class PipelineGenerator : IPipelineGenerator
     /// </summary>
     /// <param name="options">Pipeline options</param>
     /// <returns>Workflow rules configuration</returns>
-    private static async Task<WorkflowRules> BuildWorkflowRulesAsync(PipelineOptions options)
+    private static WorkflowRules BuildWorkflowRules(PipelineOptions options)
     {
-        await Task.CompletedTask; // Placeholder for async operations
 
         var rules = new List<Rule>();
 
@@ -170,6 +167,4 @@ public class PipelineGenerator : IPipelineGenerator
 
         return new WorkflowRules { Rules = rules };
     }
-
-
 }
