@@ -18,4 +18,7 @@ public class UserResource
 
     [JsonPropertyName("IsActive")]
     public bool IsActive { get; set; }
+
+    [JsonPropertyName("Teams")]
+    public List<Team> Teams { get; set; } = new();
 }

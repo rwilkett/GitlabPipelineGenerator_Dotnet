@@ -44,6 +44,7 @@
                             <th>Email Address</th>
                             <th>Username</th>
                             <th>Is Active</th>
+                            <th>Teams</th>
                         </tr>
                     </thead>
                     <tbody>
@@ -54,6 +55,7 @@
                                 <td>@user.EmailAddress</td>
                                 <td>@user.Username</td>
                                 <td>@(user.IsActive ? "Yes" : "No")</td>
+                                <td>@string.Join(", ", user.Teams.Select(t => t.Name))</td>
                             </tr>
                         }
                     </tbody>
@@ -114,11 +116,12 @@
         if (users?.Any() != true) return;
 
         var csv = new System.Text.StringBuilder();
-        csv.AppendLine("Display Name,Email Address,Username,Is Active");
+        csv.AppendLine("Display Name,Email Address,Username,Is Active,Teams");
         
         foreach (var user in users.OrderBy(u => u.DisplayName))
         {
-            csv.AppendLine($"\"{user.DisplayName}\",\"{user.EmailAddress}\",\"{user.Username}\",\"{(user.IsActive ? "Yes" : "No")}\"");
+            var teams = string.Join("; ", user.Teams.Select(t => t.Name));
+            csv.AppendLine($"\"{user.DisplayName}\",\"{user.EmailAddress}\",\"{user.Username}\",\"{(user.IsActive ? "Yes" : "No")}\",\"{teams}\"");
         }
 
         var fileName = $"octopus-users-{DateTime.Now:yyyy-MM-dd-HHmm}.csv";

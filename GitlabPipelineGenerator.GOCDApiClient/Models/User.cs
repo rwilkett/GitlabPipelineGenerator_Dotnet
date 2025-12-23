@@ -16,7 +16,7 @@ public class User
     [JsonPropertyName("email")]
     public string Email { get; set; } = string.Empty;
 
-    [JsonPropertyName("admin")]
+    [JsonPropertyName("is_admin")]
     public bool Admin { get; set; }
 
     [JsonPropertyName("roles")]

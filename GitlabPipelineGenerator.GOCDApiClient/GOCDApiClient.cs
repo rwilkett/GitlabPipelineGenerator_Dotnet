@@ -23,7 +23,8 @@ public class GOCDApiClient : IDisposable
 
         _jsonOptions = new JsonSerializerOptions
         {
-            PropertyNameCaseInsensitive = true
+            PropertyNameCaseInsensitive = true,
+            Converters = { new GitlabPipelineGenerator.GOCDApiClient.Converters.StringToBooleanConverter() }
         };
     }
 
@@ -41,7 +42,8 @@ public class GOCDApiClient : IDisposable
 
         _jsonOptions = new JsonSerializerOptions
         {
-            PropertyNameCaseInsensitive = true
+            PropertyNameCaseInsensitive = true,
+            Converters = { new GitlabPipelineGenerator.GOCDApiClient.Converters.StringToBooleanConverter() }
         };
     }
 

@@ -40,7 +40,23 @@ public class OctopusApiClient
         var response = await _httpClient.GetAsync($"{_baseUrl}/api/users/all");
         response.EnsureSuccessStatusCode();
         var json = await response.Content.ReadAsStringAsync();
-        return JsonSerializer.Deserialize<List<UserResource>>(json, _jsonOptions) ?? new List<UserResource>();
+        var users = JsonSerializer.Deserialize<List<UserResource>>(json, _jsonOptions) ?? new List<UserResource>();
+        
+        // Get team memberships for each user
+        foreach (var user in users)
+        {
+            user.Teams = await GetUserTeamsAsync(user.Id);
+        }
+        
+        return users;
+    }
+
+    public async Task<List<Team>> GetUserTeamsAsync(string userId)
+    {
+        var response = await _httpClient.GetAsync($"{_baseUrl}/api/users/{userId}/teams");
+        response.EnsureSuccessStatusCode();
+        var json = await response.Content.ReadAsStringAsync();
+        return JsonSerializer.Deserialize<List<Team>>(json, _jsonOptions) ?? new List<Team>();
     }
 
     private class ProjectsResponse
