@@ -13,45 +13,32 @@
 
 <h1>GitLab Pipeline Generator</h1>
 
-@if (projects == null && analysisResult == null)
+@if (projects == null && analysisResult == null && searchResults == null)
 {
-    <EditForm Model="connectionModel" OnValidSubmit="HandleConnect">
-        <DataAnnotationsValidator />
-        <ValidationSummary />
-
-        <div class="form-group mb-3">
-            <label for="token">GitLab Personal Access Token:</label>
-            <InputText id="token" type="password" class="form-control" @bind-Value="connectionModel.Token" />
-            <small class="form-text text-muted">Create a token at GitLab → User Settings → Access Tokens with 'read_api' and 'read_repository' scopes</small>
-        </div>
-
-        <div class="form-group mb-3">
-            <label for="groupId">Group ID:</label>
-            <InputText id="groupId" class="form-control" @bind-Value="connectionModel.GroupId" placeholder="e.g., 12345" />
-            <small class="form-text text-muted">Enter the GitLab group ID (numeric) to list projects from</small>
-        </div>
-
-        <button type="submit" class="btn btn-primary" disabled="@isConnecting">
-            @if (isConnecting)
-            {
-                <span class="spinner-border spinner-border-sm" role="status"></span>
-                <span>Connecting...</span>
-            }
-            else
-            {
-                <span>Connect to GitLab</span>
-            }
-        </button>
-    </EditForm>
+    <GitLabConnectionForm 
+        ConnectionModel="connectionModel" 
+        IsConnecting="isConnecting" 
+        IsSearching="isSearching" 
+        @bind-SearchTerm="searchTerm" 
+        OnConnect="HandleConnect" 
+        OnSearch="HandleSearch" 
+        OnSearchKeyPress="HandleSearchKeyPress" />
 
     @if (!string.IsNullOrEmpty(errorMessage))
     {
         <div class="alert alert-danger mt-3">@errorMessage</div>
     }
 }
-else if (projects != null && analysisResult == null)
+else if ((projects != null || searchResults != null) && analysisResult == null)
 {
-    <h2>Group: @groupName (@connectionModel.GroupId)</h2>
+    @if (!string.IsNullOrEmpty(groupName))
+    {
+        <h2>Group: @groupName (@connectionModel.GroupId)</h2>
+    }
+    else if (searchResults != null)
+    {
+        <h2>Search Results for "@searchTerm"</h2>
+    }
     @if (mainGroupVariables != null && mainGroupVariables.TotalVariables > 0)
     {
         <div class="alert alert-info mb-3">
@@ -72,6 +59,10 @@ else if (projects != null && analysisResult == null)
     }
     
     <button class="btn btn-secondary mb-3" @onclick="BackToConnection">← Back to Connection</button>
+    @if (searchResults != null)
+    {
+        <button class="btn btn-outline-secondary mb-3 ms-2" @onclick="ClearSearch">Clear Search</button>
+    }
 
     <!-- Tab Navigation -->
     <ul class="nav nav-tabs mb-3">
@@ -92,89 +83,74 @@ else if (projects != null && analysisResult == null)
     <!-- Tab Content -->
     @if (activeTabId == "main")
     {
-        <div class="d-flex justify-content-between align-items-center mb-3">
-            <span>Page @currentPage</span>
-            <div>
-                <button class="btn btn-outline-primary me-2" @onclick="PreviousPage" disabled="@(currentPage == 1)">Previous</button>
-                <button class="btn btn-outline-primary" @onclick="NextPage" disabled="@(!hasMoreProjects && !hasMoreSubgroups)">Next</button>
+        @if (searchResults == null)
+        {
+            <div class="d-flex justify-content-between align-items-center mb-3">
+                <span>Page @currentPage</span>
+                <div>
+                    <button class="btn btn-outline-primary me-2" @onclick="PreviousPage" disabled="@(currentPage == 1)">Previous</button>
+                    <button class="btn btn-outline-primary" @onclick="NextPage" disabled="@(!hasMoreProjects && !hasMoreSubgroups)">Next</button>
+                </div>
             </div>
-        </div>
+        }
 
-        @if (subgroups?.Any() == true)
+        @if (searchResults?.Groups?.Any() == true)
+        {
+            <h4>Groups</h4>
+            <div class="row mb-4">
+                @foreach (var group in searchResults.Groups)
+                {
+                    <GroupCard 
+                        Group="@(new SubgroupItem { Id = group.Id, Name = group.Name, FullPath = group.FullPath, Description = group.Description, WebUrl = group.WebUrl })" 
+                        ShowVariables="false" 
+                        ShowBrowseButton="true" 
+                        OnGroupClick="() => ConnectToGroup(group.Id.ToString(), group.Name)" 
+                        OnViewSamlLinks="() => ViewSamlLinks(group.Id.ToString(), group.Name)" />
+                }
+            </div>
+        }
+        else if (subgroups?.Any() == true)
         {
             <h4>Subgroups</h4>
             <div class="row mb-4">
                 @foreach (var subgroup in subgroups)
                 {
-                    <div class="col-md-6 mb-3">
-                        <div class="card border-info" style="cursor: pointer;" @onclick="() => OpenSubgroupTab(subgroup)">
-                            <div class="card-body">
-                                <h5 class="card-title">📁 @subgroup.Name</h5>
-                                <p class="card-text">
-                                    <strong>Path:</strong> @subgroup.FullPath<br>
-                                    @if (!string.IsNullOrEmpty(subgroup.Description))
-                                    {
-                                        <strong>Description:</strong> @subgroup.Description<br>
-                                    }
-                                    <strong>URL:</strong> <a href="@subgroup.WebUrl" target="_blank" @onclick:stopPropagation="true">@subgroup.WebUrl</a><br>
-                                    @if (subgroup.Variables != null && subgroup.Variables.TotalVariables > 0)
-                                    {
-                                        <strong>CI/CD Variables:</strong> @subgroup.Variables.TotalVariables
-                                        @if (subgroup.Variables.ProtectedVariables > 0)
-                                        {
-                                            <span class="badge bg-warning ms-1">@subgroup.Variables.ProtectedVariables Protected</span>
-                                        }
-                                        @if (subgroup.Variables.MaskedVariables > 0)
-                                        {
-                                            <span class="badge bg-secondary ms-1">@subgroup.Variables.MaskedVariables Masked</span>
-                                        }
-                                        <br><button class="btn btn-sm btn-outline-info mt-2" @onclick="() => ShowVariables(subgroup.Variables)" @onclick:stopPropagation="true">View Variables</button>
-                                    }
-                                </p>
-                            </div>
-                        </div>
-                    </div>
+                    <GroupCard 
+                        Group="subgroup" 
+                        Variables="subgroup.Variables" 
+                        ShowVariables="true" 
+                        ShowBrowseButton="false" 
+                        OnGroupClick="() => OpenSubgroupTab(subgroup)" 
+                        OnViewVariables="() => ShowVariables(subgroup.Variables)" 
+                        OnViewSamlLinks="() => ViewSamlLinks(subgroup.Id.ToString(), subgroup.Name)" />
                 }
             </div>
         }
 
-        @if (projects?.Any() == true)
+        @if (searchResults?.Projects?.Any() == true || projects?.Any() == true)
         {
             <h4>Projects</h4>
             <div class="row">
-                @foreach (var project in projects)
+                @foreach (var project in (searchResults?.Projects ?? projects ?? new List<ProjectItem>()))
                 {
-                    <div class="col-md-6 mb-3">
-                        <div class="card" style="cursor: pointer;" @onclick="() => OpenProjectTab(project)">
-                            <div class="card-body">
-                                <h5 class="card-title">@project.Name</h5>
-                                <p class="card-text">
-                                    <strong>Path:</strong> @project.FullPath<br>
-                                    @if (!string.IsNullOrEmpty(project.Description))
-                                    {
-                                        <strong>Description:</strong> @project.Description<br>
-                                    }
-                                    <strong>URL:</strong> <a href="@project.WebUrl" target="_blank" @onclick:stopPropagation="true">@project.WebUrl</a>
-                                </p>
-                                <button class="btn btn-primary" @onclick="() => AnalyzeProject(project.FullPath, project.Name)" @onclick:stopPropagation="true" disabled="@isAnalyzing">
-                                    @if (isAnalyzing && analyzingProject == project.FullPath)
-                                    {
-                                        <span class="spinner-border spinner-border-sm" role="status"></span>
-                                        <span>Analyzing...</span>
-                                    }
-                                    else
-                                    {
-                                        <span>Analyze Project</span>
-                                    }
-                                </button>
-                            </div>
-                        </div>
-                    </div>
+                    <ProjectCard 
+                        Project="project" 
+                        IsAnalyzing="isAnalyzing" 
+                        IsLoadingVariables="isLoadingVariables" 
+                        AnalyzingProject="analyzingProject" 
+                        LoadingVariablesFor="loadingVariablesFor" 
+                        OnProjectClick="() => OpenProjectTab(project)" 
+                        OnAnalyze="() => AnalyzeProject(project.FullPath, project.Name)" 
+                        OnViewVariables="() => ViewProjectVariables(project.FullPath, project.Name)" />
                 }
             </div>
         }
         
-        @if ((projects?.Any() != true) && (subgroups?.Any() != true))
+        @if (searchResults != null && (searchResults.Projects?.Any() != true) && (searchResults.Groups?.Any() != true))
+        {
+            <p>No projects or groups found for search term "@searchTerm".</p>
+        }
+        else if (searchResults == null && (projects?.Any() != true) && (subgroups?.Any() != true))
         {
             <p>No projects or subgroups found in group "@groupName" (ID: @connectionModel.GroupId). Make sure the group ID is correct and you have access to its contents.</p>
         }
@@ -250,17 +226,29 @@ else if (projects != null && analysisResult == null)
                                             }
                                             <strong>URL:</strong> <a href="@project.WebUrl" target="_blank" @onclick:stopPropagation="true">@project.WebUrl</a>
                                         </p>
-                                        <button class="btn btn-primary" @onclick="() => AnalyzeProject(project.FullPath, project.Name)" @onclick:stopPropagation="true" disabled="@isAnalyzing">
-                                            @if (isAnalyzing && analyzingProject == project.FullPath)
-                                            {
-                                                <span class="spinner-border spinner-border-sm" role="status"></span>
-                                                <span>Analyzing...</span>
-                                            }
-                                            else
-                                            {
-                                                <span>Analyze Project</span>
-                                            }
-                                        </button>
+                                        <div class="d-flex gap-2">
+                                            <button class="btn btn-primary" @onclick="() => AnalyzeProject(project.FullPath, project.Name)" @onclick:stopPropagation="true" disabled="@isAnalyzing">
+                                                @if (isAnalyzing && analyzingProject == project.FullPath)
+                                                {
+                                                    <span class="spinner-border spinner-border-sm" role="status"></span>
+                                                    <span>Analyzing...</span>
+                                                }
+                                                else
+                                                {
+                                                    <span>Analyze Project</span>
+                                                }
+                                            </button>
+                                            <button class="btn btn-outline-info btn-sm" @onclick="() => ViewProjectVariables(project.FullPath, project.Name)" @onclick:stopPropagation="true" disabled="@isLoadingVariables">
+                                                @if (isLoadingVariables && loadingVariablesFor == project.FullPath)
+                                                {
+                                                    <span class="spinner-border spinner-border-sm" role="status"></span>
+                                                }
+                                                else
+                                                {
+                                                    <span>Variables</span>
+                                                }
+                                            </button>
+                                        </div>
                                     </div>
                                 </div>
                             </div>
@@ -279,17 +267,30 @@ else if (projects != null && analysisResult == null)
                             <p><strong>Description:</strong> @currentTab.Project.Description</p>
                         }
                         <p><strong>URL:</strong> <a href="@currentTab.Project.WebUrl" target="_blank">@currentTab.Project.WebUrl</a></p>
-                        <button class="btn btn-primary" @onclick="() => AnalyzeProject(currentTab.Project.FullPath, currentTab.Project.Name)" disabled="@isAnalyzing">
-                            @if (isAnalyzing && analyzingProject == currentTab.Project.FullPath)
-                            {
-                                <span class="spinner-border spinner-border-sm" role="status"></span>
-                                <span>Analyzing...</span>
-                            }
-                            else
-                            {
-                                <span>Analyze Project</span>
-                            }
-                        </button>
+                        <div class="d-flex gap-2">
+                            <button class="btn btn-primary" @onclick="() => AnalyzeProject(currentTab.Project.FullPath, currentTab.Project.Name)" disabled="@isAnalyzing">
+                                @if (isAnalyzing && analyzingProject == currentTab.Project.FullPath)
+                                {
+                                    <span class="spinner-border spinner-border-sm" role="status"></span>
+                                    <span>Analyzing...</span>
+                                }
+                                else
+                                {
+                                    <span>Analyze Project</span>
+                                }
+                            </button>
+                            <button class="btn btn-outline-info" @onclick="() => ViewProjectVariables(currentTab.Project.FullPath, currentTab.Project.Name)" disabled="@isLoadingVariables">
+                                @if (isLoadingVariables && loadingVariablesFor == currentTab.Project.FullPath)
+                                {
+                                    <span class="spinner-border spinner-border-sm" role="status"></span>
+                                    <span>Loading...</span>
+                                }
+                                else
+                                {
+                                    <span>View Variables</span>
+                                }
+                            </button>
+                        </div>
                     </div>
                 </div>
             }
@@ -298,142 +299,11 @@ else if (projects != null && analysisResult == null)
 }
 else if (analysisResult != null)
 {
-    <h1>Analysis Results</h1>
-    
-    <button class="btn btn-secondary mb-3" @onclick="BackToProjects">← Back to Projects</button>
-
-    @if (analysisResult.Success)
-    {
-        <h2>Project: @analysisResult.ProjectName</h2>
-        
-        <div class="mb-4">
-            <h3>Detected Configuration</h3>
-            <p><strong>Project Type:</strong> @analysisResult.DetectedType</p>
-            <p><strong>Framework:</strong> @analysisResult.Framework</p>
-            <p><strong>Build Tool:</strong> @analysisResult.BuildTool</p>
-            @if (!string.IsNullOrEmpty(analysisResult.Version))
-            {
-                <p><strong>Version:</strong> @analysisResult.Version</p>
-            }
-            
-            @if (analysisResult.BuildCommands.Any())
-            {
-                <p><strong>Build Commands:</strong></p>
-                <ul>
-                    @foreach (var cmd in analysisResult.BuildCommands)
-                    {
-                        <li><code>@cmd</code></li>
-                    }
-                </ul>
-            }
-            
-            @if (analysisResult.TestCommands.Any())
-            {
-                <p><strong>Test Commands:</strong></p>
-                <ul>
-                    @foreach (var cmd in analysisResult.TestCommands)
-                    {
-                        <li><code>@cmd</code></li>
-                    }
-                </ul>
-            }
-            
-            @if (analysisResult.Variables != null && analysisResult.Variables.TotalVariables > 0)
-            {
-                <p><strong>CI/CD Variables:</strong> @analysisResult.Variables.TotalVariables total</p>
-                @if (analysisResult.Variables.ProtectedVariables > 0)
-                {
-                    <p><strong>Protected Variables:</strong> @analysisResult.Variables.ProtectedVariables</p>
-                }
-                @if (analysisResult.Variables.MaskedVariables > 0)
-                {
-                    <p><strong>Masked Variables:</strong> @analysisResult.Variables.MaskedVariables</p>
-                }
-                @if (analysisResult.Variables.EnvironmentScopes.Count > 1)
-                {
-                    <p><strong>Environment Scopes:</strong> @string.Join(", ", analysisResult.Variables.EnvironmentScopes)</p>
-                }
-            }
-        </div>
-        
-        <h3>Generated GitLab CI/CD Pipeline</h3>
-        <div class="yaml-output border p-3 bg-light" style="max-height: 400px; overflow-y: auto; font-family: 'Courier New', monospace; white-space: pre-wrap;">@analysisResult.YamlContent</div>
-        
-        <div class="mt-3">
-            <button class="btn btn-success" @onclick="CopyToClipboard">Copy YAML to Clipboard</button>
-        </div>
-    }
-    else
-    {
-        <div class="alert alert-danger">
-            <h3>Analysis Failed</h3>
-            <p>@analysisResult.ErrorMessage</p>
-        </div>
-    }
+    <AnalysisResults Result="analysisResult" OnBackToProjects="BackToProjects" />
 }
 
-<!-- Variables Modal -->
-@if (showVariablesModal && selectedVariables != null)
-{
-    <div class="modal show d-block" tabindex="-1" style="background-color: rgba(0,0,0,0.5);">
-        <div class="modal-dialog modal-lg">
-            <div class="modal-content">
-                <div class="modal-header">
-                    <h5 class="modal-title">CI/CD Variables</h5>
-                    <button type="button" class="btn-close" @onclick="CloseVariablesModal"></button>
-                </div>
-                <div class="modal-body">
-                    <div class="table-responsive">
-                        <table class="table table-striped">
-                            <thead>
-                                <tr>
-                                    <th>Key</th>
-                                    <th>Value</th>
-                                    <th>Environment</th>
-                                    <th>Type</th>
-                                    <th>Flags</th>
-                                </tr>
-                            </thead>
-                            <tbody>
-                                @foreach (var variable in selectedVariables.Variables)
-                                {
-                                    <tr>
-                                        <td><code>@variable.Key</code></td>
-                                        <td>
-                                            @if (variable.Masked)
-                                            {
-                                                <span class="text-muted">***masked***</span>
-                                            }
-                                            else
-                                            {
-                                                <code>@(string.IsNullOrEmpty(variable.Description) ? "[value hidden]" : variable.Description)</code>
-                                            }
-                                        </td>
-                                        <td><span class="badge bg-light text-dark">@variable.EnvironmentScope</span></td>
-                                        <td><span class="badge bg-info">@variable.VariableType</span></td>
-                                        <td>
-                                            @if (variable.Protected)
-                                            {
-                                                <span class="badge bg-warning">Protected</span>
-                                            }
-                                            @if (variable.Masked)
-                                            {
-                                                <span class="badge bg-secondary">Masked</span>
-                                            }
-                                        </td>
-                                    </tr>
-                                }
-                            </tbody>
-                        </table>
-                    </div>
-                </div>
-                <div class="modal-footer">
-                    <button type="button" class="btn btn-secondary" @onclick="CloseVariablesModal">Close</button>
-                </div>
-            </div>
-        </div>
-    </div>
-}
+<VariablesModal Show="showVariablesModal" Variables="selectedVariables" OnClose="CloseVariablesModal" />
+<SamlGroupLinksModal Show="showSamlLinksModal" SamlLinks="selectedSamlLinks" OnClose="CloseSamlLinksModal" />
 
 @code {
     private GitLabConnectionModel connectionModel = new();
@@ -451,11 +321,19 @@ else if (analysisResult != null)
     private bool hasMoreProjects = false;
     private bool hasMoreSubgroups = false;
     
+    private string searchTerm = string.Empty;
+    private bool isSearching = false;
+    private SearchResultsModel? searchResults;
+    private bool isLoadingVariables = false;
+    private string? loadingVariablesFor;
+    
     private List<TabItem> tabs = new();
     private string activeTabId = "main";
     private int tabCounter = 0;
     private bool showVariablesModal = false;
     private ProjectVariablesModel? selectedVariables;
+    private bool showSamlLinksModal = false;
+    private List<SamlGroupLinkModel>? selectedSamlLinks;
     
     public class TabItem
     {
@@ -674,16 +552,32 @@ else if (analysisResult != null)
     
     private async Task NextPage()
     {
-        currentPage++;
-        await LoadPageData();
+        LoadingService.SetLoading(true, "Loading next page...");
+        try
+        {
+            currentPage++;
+            await LoadPageData();
+        }
+        finally
+        {
+            LoadingService.SetLoading(false);
+        }
     }
     
     private async Task PreviousPage()
     {
         if (currentPage > 1)
         {
-            currentPage--;
-            await LoadPageData();
+            LoadingService.SetLoading(true, "Loading previous page...");
+            try
+            {
+                currentPage--;
+                await LoadPageData();
+            }
+            finally
+            {
+                LoadingService.SetLoading(false);
+            }
         }
     }
 
@@ -802,8 +696,16 @@ else if (analysisResult != null)
         var tab = tabs.FirstOrDefault(t => t.Id == tabId);
         if (tab != null)
         {
-            tab.CurrentPage++;
-            await LoadTabData(tab);
+            LoadingService.SetLoading(true, "Loading next page...");
+            try
+            {
+                tab.CurrentPage++;
+                await LoadTabData(tab);
+            }
+            finally
+            {
+                LoadingService.SetLoading(false);
+            }
         }
     }
     
@@ -812,8 +714,16 @@ else if (analysisResult != null)
         var tab = tabs.FirstOrDefault(t => t.Id == tabId);
         if (tab != null && tab.CurrentPage > 1)
         {
-            tab.CurrentPage--;
-            await LoadTabData(tab);
+            LoadingService.SetLoading(true, "Loading previous page...");
+            try
+            {
+                tab.CurrentPage--;
+                await LoadTabData(tab);
+            }
+            finally
+            {
+                LoadingService.SetLoading(false);
+            }
         }
     }
 
@@ -829,6 +739,8 @@ else if (analysisResult != null)
         tabs.Clear();
         activeTabId = "main";
         tabCounter = 0;
+        searchResults = null;
+        searchTerm = string.Empty;
     }
 
     private void BackToProjects()
@@ -869,14 +781,7 @@ else if (analysisResult != null)
         }
     }
 
-    private async System.Threading.Tasks.Task CopyToClipboard()
-    {
-        if (analysisResult?.YamlContent != null)
-        {
-            await JSRuntime.InvokeVoidAsync("navigator.clipboard.writeText", analysisResult.YamlContent);
-            await JSRuntime.InvokeVoidAsync("alert", "YAML copied to clipboard!");
-        }
-    }
+
     
     private void ShowVariables(ProjectVariablesModel variables)
     {
@@ -888,5 +793,232 @@ else if (analysisResult != null)
     {
         showVariablesModal = false;
         selectedVariables = null;
+    }
+    
+    private async Task ViewSamlLinks(string groupId, string groupName)
+    {
+        try
+        {
+            var gitlabClient = new GitlabPipelineGenerator.GitLabApiClient.GitLabClient(
+                connectionModel.ServerUrl, 
+                connectionModel.Token);
+            
+            var samlLinks = await gitlabClient.GetGroupSamlLinksAsync(groupId);
+            selectedSamlLinks = samlLinks.Select(link => new SamlGroupLinkModel
+            {
+                SamlGroupName = link.SamlGroupName,
+                AccessLevel = GetAccessLevelName(link.AccessLevel),
+                ProviderName = link.Provider
+            }).ToList();
+            
+            showSamlLinksModal = true;
+        }
+        catch (Exception ex)
+        {
+            errorMessage = $"Failed to load SAML links for {groupName}: {ex.Message}";
+        }
+    }
+    
+    private void CloseSamlLinksModal()
+    {
+        showSamlLinksModal = false;
+        selectedSamlLinks = null;
+    }
+    
+    private string GetAccessLevelName(int accessLevel)
+    {
+        return accessLevel switch
+        {
+            10 => "Guest",
+            20 => "Reporter",
+            30 => "Developer",
+            40 => "Maintainer",
+            50 => "Owner",
+            _ => accessLevel.ToString()
+        };
+    }
+    
+    private void ClearSearch()
+    {
+        searchResults = null;
+        searchTerm = string.Empty;
+    }
+    
+    private async Task HandleSearch()
+    {
+        if (string.IsNullOrWhiteSpace(searchTerm) || string.IsNullOrWhiteSpace(connectionModel.Token))
+            return;
+            
+        isSearching = true;
+        errorMessage = null;
+        LoadingService.SetLoading(true, $"Searching for '{searchTerm}'...");
+        
+        try
+        {
+            var gitlabClient = new GitlabPipelineGenerator.GitLabApiClient.GitLabClient(
+                connectionModel.ServerUrl, 
+                connectionModel.Token);
+            
+            LoadingService.SetLoading(true, "Searching projects...");
+            var searchedProjects = await gitlabClient.SearchProjectsAsync(searchTerm, pageSize);
+            
+            LoadingService.SetLoading(true, "Searching groups...");
+            var searchedGroups = await gitlabClient.SearchGroupsAsync(searchTerm, pageSize);
+            
+            searchResults = new SearchResultsModel
+            {
+                SearchTerm = searchTerm,
+                Projects = searchedProjects.Select(p => new ProjectItem
+                {
+                    Id = p.Id,
+                    Name = p.Name,
+                    FullPath = p.PathWithNamespace,
+                    Description = p.Description ?? "",
+                    WebUrl = p.WebUrl
+                }).ToList(),
+                Groups = searchedGroups.Select(g => new GroupItem
+                {
+                    Id = g.Id,
+                    Name = g.Name,
+                    FullPath = g.FullPath,
+                    Description = g.Description ?? "",
+                    WebUrl = g.WebUrl
+                }).ToList()
+            };
+        }
+        catch (Exception ex)
+        {
+            errorMessage = $"Search failed: {ex.Message}";
+        }
+        finally
+        {
+            isSearching = false;
+            LoadingService.SetLoading(false);
+        }
+    }
+    
+    private async Task HandleSearchKeyPress(KeyboardEventArgs e)
+    {
+        if (e.Key == "Enter")
+        {
+            await HandleSearch();
+        }
+    }
+    
+    private async Task ConnectToGroup(string groupId, string groupName)
+    {
+        connectionModel.GroupId = groupId;
+        this.groupName = groupName;
+        searchResults = null;
+        searchTerm = string.Empty;
+        
+        isConnecting = true;
+        LoadingService.SetLoading(true, $"Loading group {groupName}...");
+        
+        try
+        {
+            var gitlabClient = new GitlabPipelineGenerator.GitLabApiClient.GitLabClient(
+                connectionModel.ServerUrl, 
+                connectionModel.Token);
+            
+            GitLabProjectService.SetAuthenticatedClient(gitlabClient);
+            
+            // Get main group variables
+            try
+            {
+                var groupVars = await gitlabClient.GetGroupVariablesAsync(connectionModel.GroupId);
+                mainGroupVariables = new ProjectVariablesModel
+                {
+                    TotalVariables = groupVars.Count,
+                    ProtectedVariables = groupVars.Count(v => v.Protected),
+                    MaskedVariables = groupVars.Count(v => v.Masked),
+                    EnvironmentScopes = groupVars.Select(v => v.EnvironmentScope).Distinct().ToList(),
+                    Variables = groupVars.Select(v => new ProjectVariableModel
+                    {
+                        Key = v.Key,
+                        VariableType = v.VariableType,
+                        Protected = v.Protected,
+                        Masked = v.Masked,
+                        EnvironmentScope = v.EnvironmentScope,
+                        Description = v.Description
+                    }).ToList()
+                };
+            }
+            catch
+            {
+                // Ignore errors fetching main group variables
+            }
+            
+            LoadingService.SetLoading(true, "Loading projects and subgroups...");
+            await LoadPageData();
+        }
+        catch (Exception ex)
+        {
+            errorMessage = $"Failed to load group: {ex.Message}";
+        }
+        finally
+        {
+            isConnecting = false;
+            LoadingService.SetLoading(false);
+        }
+    }
+    
+    private async Task ViewProjectVariables(string projectPath, string projectName)
+    {
+        isLoadingVariables = true;
+        loadingVariablesFor = projectPath;
+        
+        try
+        {
+            var gitlabClient = new GitlabPipelineGenerator.GitLabApiClient.GitLabClient(
+                connectionModel.ServerUrl, 
+                connectionModel.Token);
+            
+            var projectVars = await gitlabClient.GetProjectVariablesAsync(projectPath);
+            var variablesModel = new ProjectVariablesModel
+            {
+                TotalVariables = projectVars.Count,
+                ProtectedVariables = projectVars.Count(v => v.Protected),
+                MaskedVariables = projectVars.Count(v => v.Masked),
+                EnvironmentScopes = projectVars.Select(v => v.EnvironmentScope).Distinct().ToList(),
+                Variables = projectVars.Select(v => new ProjectVariableModel
+                {
+                    Key = v.Key,
+                    Value = v.Value,
+                    VariableType = v.VariableType,
+                    Protected = v.Protected,
+                    Masked = v.Masked,
+                    EnvironmentScope = v.EnvironmentScope,
+                    Description = v.Description
+                }).ToList()
+            };
+            
+            ShowVariables(variablesModel);
+        }
+        catch (Exception ex)
+        {
+            errorMessage = $"Failed to load variables for {projectName}: {ex.Message}";
+        }
+        finally
+        {
+            isLoadingVariables = false;
+            loadingVariablesFor = null;
+        }
+    }
+    
+    public class SearchResultsModel
+    {
+        public string SearchTerm { get; set; } = string.Empty;
+        public List<ProjectItem> Projects { get; set; } = new();
+        public List<GroupItem> Groups { get; set; } = new();
+    }
+    
+    public class GroupItem
+    {
+        public int Id { get; set; }
+        public string Name { get; set; } = string.Empty;
+        public string FullPath { get; set; } = string.Empty;
+        public string Description { get; set; } = string.Empty;
+        public string WebUrl { get; set; } = string.Empty;
     }
 }

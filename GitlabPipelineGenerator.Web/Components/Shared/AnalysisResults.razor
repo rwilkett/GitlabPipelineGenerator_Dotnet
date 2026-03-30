@@ -1,0 +1,89 @@
+@using GitlabPipelineGenerator.Web.Models
+@inject IJSRuntime JSRuntime
+
+<h1>Analysis Results</h1>
+
+<button class="btn btn-secondary mb-3" @onclick="OnBackToProjects">← Back to Projects</button>
+
+@if (Result.Success)
+{
+    <h2>Project: @Result.ProjectName</h2>
+    
+    <div class="mb-4">
+        <h3>Detected Configuration</h3>
+        <p><strong>Project Type:</strong> @Result.DetectedType</p>
+        <p><strong>Framework:</strong> @Result.Framework</p>
+        <p><strong>Build Tool:</strong> @Result.BuildTool</p>
+        @if (!string.IsNullOrEmpty(Result.Version))
+        {
+            <p><strong>Version:</strong> @Result.Version</p>
+        }
+        
+        @if (Result.BuildCommands.Any())
+        {
+            <p><strong>Build Commands:</strong></p>
+            <ul>
+                @foreach (var cmd in Result.BuildCommands)
+                {
+                    <li><code>@cmd</code></li>
+                }
+            </ul>
+        }
+        
+        @if (Result.TestCommands.Any())
+        {
+            <p><strong>Test Commands:</strong></p>
+            <ul>
+                @foreach (var cmd in Result.TestCommands)
+                {
+                    <li><code>@cmd</code></li>
+                }
+            </ul>
+        }
+        
+        @if (Result.Variables != null && Result.Variables.TotalVariables > 0)
+        {
+            <p><strong>CI/CD Variables:</strong> @Result.Variables.TotalVariables total</p>
+            @if (Result.Variables.ProtectedVariables > 0)
+            {
+                <p><strong>Protected Variables:</strong> @Result.Variables.ProtectedVariables</p>
+            }
+            @if (Result.Variables.MaskedVariables > 0)
+            {
+                <p><strong>Masked Variables:</strong> @Result.Variables.MaskedVariables</p>
+            }
+            @if (Result.Variables.EnvironmentScopes.Count > 1)
+            {
+                <p><strong>Environment Scopes:</strong> @string.Join(", ", Result.Variables.EnvironmentScopes)</p>
+            }
+        }
+    </div>
+    
+    <h3>Generated GitLab CI/CD Pipeline</h3>
+    <div class="yaml-output border p-3 bg-light" style="max-height: 400px; overflow-y: auto; font-family: 'Courier New', monospace; white-space: pre-wrap;">@Result.YamlContent</div>
+    
+    <div class="mt-3">
+        <button class="btn btn-success" @onclick="CopyToClipboard">Copy YAML to Clipboard</button>
+    </div>
+}
+else
+{
+    <div class="alert alert-danger">
+        <h3>Analysis Failed</h3>
+        <p>@Result.ErrorMessage</p>
+    </div>
+}
+
+@code {
+    [Parameter] public AnalysisResultModel Result { get; set; } = new();
+    [Parameter] public EventCallback OnBackToProjects { get; set; }
+
+    private async Task CopyToClipboard()
+    {
+        if (Result?.YamlContent != null)
+        {
+            await JSRuntime.InvokeVoidAsync("navigator.clipboard.writeText", Result.YamlContent);
+            await JSRuntime.InvokeVoidAsync("alert", "YAML copied to clipboard!");
+        }
+    }
+}

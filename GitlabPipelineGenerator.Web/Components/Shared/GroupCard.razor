@@ -1,0 +1,60 @@
+@using GitlabPipelineGenerator.Web.Models
+
+<div class="col-md-6 mb-3">
+    <div class="card border-info" style="cursor: pointer;" @onclick="OnGroupClick">
+        <div class="card-body">
+            <h5 class="card-title">📁 @Group.Name</h5>
+            <p class="card-text">
+                <strong>Path:</strong> @Group.FullPath<br>
+                @if (!string.IsNullOrEmpty(Group.Description))
+                {
+                    <strong>Description:</strong> @Group.Description<br>
+                }
+                <strong>URL:</strong> <a href="@Group.WebUrl" target="_blank" @onclick:stopPropagation="true">@Group.WebUrl</a>
+                @if (ShowVariables && Variables != null && Variables.TotalVariables > 0)
+                {
+                    <br><strong>CI/CD Variables:</strong> @Variables.TotalVariables
+                    @if (Variables.ProtectedVariables > 0)
+                    {
+                        <span class="badge bg-warning ms-1">@Variables.ProtectedVariables Protected</span>
+                    }
+                    @if (Variables.MaskedVariables > 0)
+                    {
+                        <span class="badge bg-secondary ms-1">@Variables.MaskedVariables Masked</span>
+                    }
+                    <br>
+                    <div class="d-flex gap-1 mt-2">
+                        <button class="btn btn-sm btn-outline-info" @onclick="OnViewVariables" @onclick:stopPropagation="true">Variables</button>
+                        <button class="btn btn-sm btn-outline-secondary" @onclick="OnViewSamlLinks" @onclick:stopPropagation="true">SAML Links</button>
+                    </div>
+                }
+                @if (ShowVariables && (Variables == null || Variables.TotalVariables == 0))
+                {
+                    <br>
+                    <button class="btn btn-sm btn-outline-secondary mt-2" @onclick="OnViewSamlLinks" @onclick:stopPropagation="true">SAML Links</button>
+                }
+            </p>
+            @if (ShowBrowseButton)
+            {
+                <div class="d-flex gap-2 mt-2">
+                    <button class="btn btn-primary" @onclick="OnGroupClick" @onclick:stopPropagation="true">
+                        Browse Group
+                    </button>
+                    <button class="btn btn-outline-secondary" @onclick="OnViewSamlLinks" @onclick:stopPropagation="true">
+                        SAML Links
+                    </button>
+                </div>
+            }
+        </div>
+    </div>
+</div>
+
+@code {
+    [Parameter] public SubgroupItem Group { get; set; } = new();
+    [Parameter] public ProjectVariablesModel? Variables { get; set; }
+    [Parameter] public bool ShowVariables { get; set; } = true;
+    [Parameter] public bool ShowBrowseButton { get; set; } = false;
+    [Parameter] public EventCallback OnGroupClick { get; set; }
+    [Parameter] public EventCallback OnViewVariables { get; set; }
+    [Parameter] public EventCallback OnViewSamlLinks { get; set; }
+}

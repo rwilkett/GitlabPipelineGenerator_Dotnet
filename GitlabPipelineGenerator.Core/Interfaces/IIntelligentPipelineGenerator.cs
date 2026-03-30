@@ -19,11 +19,4 @@ public interface IIntelligentPipelineGenerator : IPipelineGenerator
         ProjectAnalysisResult analysisResult,
         PipelineOptions? manualOptions = null,
         ConfigurationMergeStrategy mergeStrategy = ConfigurationMergeStrategy.PreferManual);
-
-    /// <summary>
-    /// Serializes a pipeline configuration to YAML format
-    /// </summary>
-    /// <param name="pipeline">Pipeline configuration to serialize</param>
-    /// <returns>YAML representation of the pipeline</returns>
-    string SerializeToYaml(PipelineConfiguration pipeline);
 }

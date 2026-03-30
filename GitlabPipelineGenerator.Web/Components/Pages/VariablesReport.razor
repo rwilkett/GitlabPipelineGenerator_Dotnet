@@ -31,7 +31,8 @@
         <div class="alert alert-info">
             <h4>@variablesReport.GroupName</h4>
             <p><strong>Direct Variables:</strong> @variablesReport.TopLevelVariableCount</p>
-            <p><strong>Total Variables (including all subgroups/projects):</strong> @variablesReport.TotalVariableCount</p>
+            <p><strong>Hierarchy Subtotal:</strong> @(variablesReport.TotalVariableCount - variablesReport.TopLevelVariableCount)</p>
+            <p><strong>Grand Total:</strong> @variablesReport.TotalVariableCount</p>
         </div>
         
         @if (variablesReport.Groups.Any())
@@ -82,7 +83,11 @@
                 }
                 <strong>📁 @group.Name</strong>
                 <span class="ms-2 text-muted">(@group.FullPath)</span>
-                <span class="badge bg-primary ms-auto">@group.VariableCount direct | @group.TotalVariableCount total</span>
+                <span class="badge bg-primary ms-auto">@group.VariableCount direct</span>
+                @if (group.Subgroups.Any() || group.Projects.Any())
+                {
+                    <span class="badge bg-secondary ms-2">@(group.Projects.Sum(p => p.VariableCount) + group.Subgroups.Sum(s => s.TotalVariableCount)) subtotal</span>
+                }
             </div>
             
             @if (group.IsExpanded)
@@ -96,7 +101,7 @@
                                 <span class="me-4"></span>
                                 <span>📄 @project.Name</span>
                                 <span class="ms-2 text-muted">(@project.FullPath)</span>
-                                <span class="badge bg-secondary ms-auto">@project.VariableCount variables</span>
+                                <span class="badge bg-info ms-auto">@project.VariableCount direct</span>
                             </div>
                         </div>
                     }
@@ -260,10 +265,10 @@
         if (variablesReport == null) return;
 
         var csv = new System.Text.StringBuilder();
-        csv.AppendLine("Type,Name,Full Path,Direct Variables,Total Variables");
+        csv.AppendLine("Type,Name,Full Path,Direct Variables,Subtotal");
         
         // Add top-level group to CSV
-        csv.AppendLine($"Top-Level Group,\"{variablesReport.GroupName}\",\"{variablesReport.GroupName}\",{variablesReport.TopLevelVariableCount},{variablesReport.TotalVariableCount}");
+        csv.AppendLine($"Top-Level Group,\"{variablesReport.GroupName}\",\"{variablesReport.GroupName}\",{variablesReport.TopLevelVariableCount},{variablesReport.TotalVariableCount - variablesReport.TopLevelVariableCount}");
         
         foreach (var group in variablesReport.Groups)
         {
@@ -276,11 +281,12 @@
     
     private void ExportGroupToCsv(System.Text.StringBuilder csv, HierarchicalGroupSummary group, string type)
     {
-        csv.AppendLine($"{type},\"{group.Name}\",\"{group.FullPath}\",{group.VariableCount},{group.TotalVariableCount}");
+        var subtotal = group.Projects.Sum(p => p.VariableCount) + group.Subgroups.Sum(s => s.TotalVariableCount);
+        csv.AppendLine($"{type},\"{group.Name}\",\"{group.FullPath}\",{group.VariableCount},{subtotal}");
         
         foreach (var project in group.Projects)
         {
-            csv.AppendLine($"Project,\"{project.Name}\",\"{project.FullPath}\",{project.VariableCount},{project.VariableCount}");
+            csv.AppendLine($"Project,\"{project.Name}\",\"{project.FullPath}\",{project.VariableCount},0");
         }
         
         foreach (var subgroup in group.Subgroups)
@@ -308,10 +314,10 @@
         html.AppendLine($"<p><strong>Report Generated:</strong> {DateTime.Now:yyyy-MM-dd HH:mm:ss}</p>");
         
         html.AppendLine("<table>");
-        html.AppendLine("<tr><th>Type</th><th>Name</th><th>Full Path</th><th>Direct Variables</th><th>Total Variables</th></tr>");
+        html.AppendLine("<tr><th>Type</th><th>Name</th><th>Full Path</th><th>Direct Variables</th><th>Subtotal</th></tr>");
         
         // Add top-level group row
-        html.AppendLine($"<tr class='level-0'><td>📁 Top-Level Group</td><td>{variablesReport.GroupName}</td><td>{variablesReport.GroupName}</td><td>{variablesReport.TopLevelVariableCount}</td><td>{variablesReport.TotalVariableCount}</td></tr>");
+        html.AppendLine($"<tr class='level-0'><td>📁 Top-Level Group</td><td>{variablesReport.GroupName}</td><td>{variablesReport.GroupName}</td><td>{variablesReport.TopLevelVariableCount}</td><td>{variablesReport.TotalVariableCount - variablesReport.TopLevelVariableCount}</td></tr>");
         
         foreach (var group in variablesReport.Groups)
         {
@@ -328,13 +334,14 @@
     {
         var levelClass = $"level-{Math.Min(level, 3)}";
         var indent = new string(' ', (level - 1) * 4);
+        var subtotal = group.Projects.Sum(p => p.VariableCount) + group.Subgroups.Sum(s => s.TotalVariableCount);
         
-        html.AppendLine($"<tr class='{levelClass}'><td>📁 Group</td><td>{indent}{group.Name}</td><td>{group.FullPath}</td><td>{group.VariableCount}</td><td>{group.TotalVariableCount}</td></tr>");
+        html.AppendLine($"<tr class='{levelClass}'><td>📁 Group</td><td>{indent}{group.Name}</td><td>{group.FullPath}</td><td>{group.VariableCount}</td><td>{subtotal}</td></tr>");
         
         foreach (var project in group.Projects.OrderBy(p => p.Name))
         {
             var projectIndent = new string(' ', level * 4);
-            html.AppendLine($"<tr class='level-{Math.Min(level + 1, 3)} project'><td>📄 Project</td><td>{projectIndent}{project.Name}</td><td>{project.FullPath}</td><td>{project.VariableCount}</td><td>{project.VariableCount}</td></tr>");
+            html.AppendLine($"<tr class='level-{Math.Min(level + 1, 3)} project'><td>📄 Project</td><td>{projectIndent}{project.Name}</td><td>{project.FullPath}</td><td>{project.VariableCount}</td><td>0</td></tr>");
         }
         
         foreach (var subgroup in group.Subgroups.OrderBy(g => g.Name))

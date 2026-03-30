@@ -42,7 +42,7 @@ public class CircuitBreaker
     /// <returns>Result of the operation</returns>
     public async Task<T> ExecuteAsync<T>(Func<Task<T>> operation, CancellationToken cancellationToken = default)
     {
-        await CheckStateAsync(cancellationToken);
+        CheckStateAsync(cancellationToken);
 
         try
         {
@@ -64,7 +64,7 @@ public class CircuitBreaker
     /// <param name="cancellationToken">Cancellation token</param>
     public async Task ExecuteAsync(Func<Task> operation, CancellationToken cancellationToken = default)
     {
-        await CheckStateAsync(cancellationToken);
+        CheckStateAsync(cancellationToken);
 
         try
         {
@@ -78,7 +78,7 @@ public class CircuitBreaker
         }
     }
 
-    private async Task CheckStateAsync(CancellationToken cancellationToken)
+    private Task CheckStateAsync(CancellationToken cancellationToken)
     {
         lock (_lock)
         {
@@ -86,20 +86,20 @@ public class CircuitBreaker
             {
                 case CircuitBreakerState.Closed:
                     // Normal operation
-                    return;
+                    return Task.CompletedTask;
 
                 case CircuitBreakerState.Open:
                     // Check if we should transition to half-open
                     if (DateTime.UtcNow >= _nextAttemptTime)
                     {
                         _state = CircuitBreakerState.HalfOpen;
-                        return;
+                        return Task.CompletedTask;
                     }
                     break;
 
                 case CircuitBreakerState.HalfOpen:
                     // Allow one request through
-                    return;
+                    return Task.CompletedTask;
             }
         }
 

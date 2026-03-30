@@ -15,6 +15,7 @@ public class ProjectAnalysisServiceTests
     private readonly Mock<IFilePatternAnalyzer> _mockFilePatternAnalyzer;
     private readonly Mock<IDependencyAnalyzer> _mockDependencyAnalyzer;
     private readonly Mock<IConfigurationAnalyzer> _mockConfigurationAnalyzer;
+    private readonly Mock<IGitLabProjectService> _mockGitLabProjectService;
     private readonly ProjectAnalysisService _analysisService;
 
     public ProjectAnalysisServiceTests()
@@ -22,11 +23,13 @@ public class ProjectAnalysisServiceTests
         _mockFilePatternAnalyzer = new Mock<IFilePatternAnalyzer>();
         _mockDependencyAnalyzer = new Mock<IDependencyAnalyzer>();
         _mockConfigurationAnalyzer = new Mock<IConfigurationAnalyzer>();
+        _mockGitLabProjectService = new Mock<IGitLabProjectService>();
         
         _analysisService = new ProjectAnalysisService(
             _mockFilePatternAnalyzer.Object,
             _mockDependencyAnalyzer.Object,
-            _mockConfigurationAnalyzer.Object);
+            _mockConfigurationAnalyzer.Object,
+            _mockGitLabProjectService.Object);
     }
 
     #region Constructor Tests
@@ -38,7 +41,8 @@ public class ProjectAnalysisServiceTests
         Assert.Throws<ArgumentNullException>(() => new ProjectAnalysisService(
             null!,
             _mockDependencyAnalyzer.Object,
-            _mockConfigurationAnalyzer.Object));
+            _mockConfigurationAnalyzer.Object,
+            _mockGitLabProjectService.Object));
     }
 
     [Fact]
@@ -48,7 +52,8 @@ public class ProjectAnalysisServiceTests
         Assert.Throws<ArgumentNullException>(() => new ProjectAnalysisService(
             _mockFilePatternAnalyzer.Object,
             null!,
-            _mockConfigurationAnalyzer.Object));
+            _mockConfigurationAnalyzer.Object,
+            _mockGitLabProjectService.Object));
     }
 
     [Fact]
@@ -58,6 +63,18 @@ public class ProjectAnalysisServiceTests
         Assert.Throws<ArgumentNullException>(() => new ProjectAnalysisService(
             _mockFilePatternAnalyzer.Object,
             _mockDependencyAnalyzer.Object,
+            null!,
+            _mockGitLabProjectService.Object));
+    }
+
+    [Fact]
+    public void Constructor_WithNullGitLabProjectService_ShouldThrowArgumentNullException()
+    {
+        // Act & Assert
+        Assert.Throws<ArgumentNullException>(() => new ProjectAnalysisService(
+            _mockFilePatternAnalyzer.Object,
+            _mockDependencyAnalyzer.Object,
+            _mockConfigurationAnalyzer.Object,
             null!));
     }
 
