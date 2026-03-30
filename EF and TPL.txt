@@ -1,0 +1,18 @@
+Async/Await and Task Parallel Library
+	DbContext is not thread-safe. you must ensure a separate DbContext instance is used for each parallel task or thread
+	
+	Use DbContextFactory: When using dependency injection in modern .NET applications, inject an IDbContextFactory<TContext> 
+	(or AddPooledDbContextFactory for efficiency) into your service. Use the factory to create a new, isolated DbContext instance within each parallel task or loop iteration.
+	
+In programming, thread-safe means that a function, data structure, or class can be accessed by multiple threads simultaneously 
+	without causing unexpected behavior, data corruption, or race conditions.
+	
+TPL - Task, async/await
+
+Prevent SQL Injection Attacks:
+	Use parameterized Queries
+	Input Validation and sanitization
+	Stored Procedures
+	Principle of Least Privilege - ensure account used by application has only the minimum necessary permissions
+	Escape characters in user input that have special meaning in SQL (',",\)
+	

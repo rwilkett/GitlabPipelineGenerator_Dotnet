@@ -1,0 +1,18 @@
+Testing Frameworks
+	xUnit.net
+	NUnit
+	MSTest
+	Moq
+	FluentAssertions
+	
+Effective unit testing in .NET Core adheres to several best practices: 
+
+www.qservicesit.com
+www.qservicesit.com
+Isolation: Unit tests should focus solely on the code under test, isolating it from external infrastructure like databases, file systems, or network calls.
+AAA Pattern: Tests are commonly organized using the Arrange-Act-Assert (AAA) pattern:
+Arrange: Set up the test data, environment, and dependencies.
+Act: Execute the specific method or functionality being tested.
+Assert: Verify that the result matches the expected outcome.
+Automation: Integrate unit tests into your CI/CD pipelines to ensure they run automatically with every code change, providing immediate feedback.
+Descriptive Naming: Use clear and descriptive test names that indicate the behavior being tested and the expected result. 

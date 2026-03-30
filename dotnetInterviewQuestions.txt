@@ -1,0 +1,127 @@
+Difference between .NET Core and .NET Framework
+	.NET Framework - Legacy, only windows
+	.NET Core - cross platform
+	
+Boxing and Unboxing - Boxing is converting value types (int, struct..) to reference types.
+	Boxing is implicit, unboxing is explicit
+	Unboxing - extracts the value type from the object
+	
+	int i = 123;
+		// The following line boxes i.
+	object o = i;
+	
+	o = 123;
+	i = (int)o;  // unboxing
+
+Reference Types vs Value Types
+
+Value Types are stored on the stack
+Reference Type values are stored on the heap
+
+Key Differences: Stack vs. Heap
+Feature 	Stack	Heap
+Data Stored	Value types (int, bool, struct), and pointers/references to heap objects.	Reference types (class, object, string, array).
+Allocation	Automatic and very fast (LIFO: Last-In, First-Out).	Dynamic and slower, requires searching for available space.
+Deallocation	Automatic when the method/scope ends (stack frame is popped).	Managed by the Garbage Collector (GC) when no longer referenced.
+Size Limit	Fixed and limited (typically ~1MB per thread), can cause a StackOverflowException.	Dynamically growing, limited by physical memory.
+Access Speed	Very fast, as memory is accessed sequentially and is often CPU cache-friendly.	Slower due to indirection (access via reference/pointer) and potential memory fragmentation.
+Lifetime	Tied to the scope of the function/method where declared.	Persists as long as there is an active reference pointing to it.
+Thread Safety	Inherently thread-safe; each thread has its own private stack.	Not inherently thread-safe; shared memory requires careful management when accessed by multiple threads.
+
+Value Types:
+	Integral types:
+	byte - unsigned 8-bit integer
+	sbyte - signed 8-bit integer
+	short - 16
+	int, uint
+	long
+	
+	Floating point types:
+	float
+	double
+	decimal - high precision for financial calculations
+	
+	Other:
+	bool
+	char
+	struct, enum, Nullable<T>
+	
+Reference types:
+	string
+	object
+	class
+	
+int? nullable
+
+myNullableInt.HasValue
+
+
+Stringbuilder vs string += (concatenation)
+strings are immutable
+
+
+Entity Framework
+DbContext - Session with the database -Manages the connection, querying and saving data, tracking changes
+DbSet - Collection of entities of a specific type within the DbContext. Conceptually maps a table
+
+public record Person(int Id, string FirstName, string LastName);
+
+	public class AppDBContext : DbContext
+	{
+		public virtual DbSet<Person> Persons { get; set; } // DbSet of type record
+		// ... other DbSets
+	}
+
+
+POCO classes - Plain old CLR objects. Domain classes that have no reference to EF or any other framework specific base classes
+Entity States - Added, Deleted, Modified, Unchanged, Detached
+
+Code-First
+Database-First
+
+Migrations - Tool in EF to allow developers to evolve the database schema incrementally over time as the model changes. - Changes underlying model and data 
+
+Query objects
+	EntityDataReader
+
+C# Record Types - Record Class or Record Struct
+
+Querying and Performance
+	Lazy Loading
+	Eager Loading
+	 
+	 Linq
+	using (var context = new BloggingContext())
+	{
+		var blogs = await context.Blogs
+			.Where(b => b.Url.Contains("dotnet"))
+			.ToListAsync();
+	}
+	
+Basics
+	Abstract Class vs Interface
+		a class can implement multiple interfaces but inherit only a single abstract class, and abstract classes can maintain state (fields and constructors), 
+		whereas interfaces (before C# 8.0) could not and still cannot have instance fields
+		
+When we talk about abstract classes we are defining characteristics of an object type; specifying what an object is.
+When we talk about an interface and define capabilities that we promise to provide, we are talking about establishing a contract about what the object can do.
+
+Async/Await
+Return Task or Task<T>
+
+public async Task<int> GetContentLengthAsync(string url)
+{
+	using HttpClient client = new();
+	
+	string contents = await client.GetStringAsync(url)
+	
+Dependency Injection IoC
+	SOLID principle that states high-level modules should not depend on low-level modules, both should depend on interfaces
+	ASP.Net Core built-in DI container - IServiceProvider
+	
+Program.cs or Startup.cs
+In older versions of ASP.NET Core (pre-.NET 6), Program.cs was the application's entry point, while Startup.cs was a separate file responsible for configuration. 
+In modern .NET (6+), the functionalities of both files are typically consolidated into a single, streamlined Program.cs file using top-level statements.
+	
+
+	

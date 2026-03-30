@@ -1,0 +1,2 @@
+Using REACT or Angular as Frontend Application
+SPA single page Application
